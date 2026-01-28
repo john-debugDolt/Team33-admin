@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFile, FiAlertTriangle, FiPlus, FiRefreshCw, FiX, FiDownload } from 'react-icons/fi';
-
-const API_KEY = 'team33-admin-secret-key-2024';
+import { keycloakService } from '../../services/keycloakService';
 
 const BankTx = () => {
+  const navigate = useNavigate();
   // Default to 'all' to show all transactions initially
   const [selectedDate, setSelectedDate] = useState('all');
   const [selectedBank, setSelectedBank] = useState('all');
@@ -23,8 +24,27 @@ const BankTx = () => {
     remarks: ''
   });
 
+  // Get auth headers with JWT token
+  const getAuthHeaders = async () => {
+    const token = await keycloakService.getValidToken();
+    if (!token) {
+      navigate('/login');
+      throw new Error('Not authenticated');
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
+  };
+
   // Load banks from localStorage first, then fetch from API
   useEffect(() => {
+    // Check authentication on mount
+    if (!keycloakService.isAuthenticated()) {
+      navigate('/login');
+      return;
+    }
+
     const fetchBanks = async () => {
       setLoading(true);
 
@@ -44,7 +64,8 @@ const BankTx = () => {
 
       // Then fetch fresh data from API
       try {
-        const response = await fetch('/api/banks');
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/banks', { headers });
         const data = await response.json();
 
         // API can return array directly OR { success: true, banks: [...] }
@@ -127,9 +148,10 @@ const BankTx = () => {
         // Fetch pending and completed deposits in PARALLEL for speed
         console.log('[BankTx] Fetching deposits for bank:', selectedBank);
 
+        const headers = await getAuthHeaders();
         const [pendingResponse, completedResponse] = await Promise.all([
-          fetch(`/api/admin/deposits/pending`, { headers: { 'X-API-Key': API_KEY } }),
-          fetch(`/api/admin/deposits/status/COMPLETED`, { headers: { 'X-API-Key': API_KEY } })
+          fetch(`/api/admin/deposits/pending`, { headers }),
+          fetch(`/api/admin/deposits/status/COMPLETED`, { headers })
         ]);
 
         const [pendingRes, completedRes] = await Promise.all([
@@ -174,7 +196,7 @@ const BankTx = () => {
           await Promise.all(
             uniqueAccountIds.slice(0, 20).map(async (accountId) => {
               try {
-                const res = await fetch(`/api/accounts/${accountId}`);
+                const res = await fetch(`/api/accounts/${accountId}`, { headers });
                 if (res.ok) {
                   const acc = await res.json();
                   accountNames[accountId] = `${acc.firstName || ''} ${acc.lastName || ''}`.trim() || accountId;

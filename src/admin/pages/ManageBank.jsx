@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight, FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
-
-const API_KEY = 'team33-admin-secret-key-2024';
+import { keycloakService } from '../../services/keycloakService';
 
 const ManageBank = () => {
+  const navigate = useNavigate();
   const [banks, setBanks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -18,29 +19,50 @@ const ManageBank = () => {
     status: 'ACTIVE'
   });
 
+  // Get auth headers with JWT token
+  const getAuthHeaders = async () => {
+    const token = await keycloakService.getValidToken();
+    if (!token) {
+      navigate('/login');
+      throw new Error('Not authenticated');
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
+  };
+
   // Fetch banks from API
   const fetchBanks = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/banks', {
-        headers: { 'X-API-Key': API_KEY }
-      });
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/banks', { headers });
 
       if (response.ok) {
         const data = await response.json();
         setBanks(Array.isArray(data) ? data : []);
+      } else if (response.status === 401) {
+        navigate('/login');
       } else {
         setError(`Failed to fetch banks: ${response.status}`);
       }
     } catch (err) {
-      setError(`Network error: ${err.message}`);
+      if (err.message !== 'Not authenticated') {
+        setError(`Network error: ${err.message}`);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    // Check authentication on mount
+    if (!keycloakService.isAuthenticated()) {
+      navigate('/login');
+      return;
+    }
     fetchBanks();
   }, []);
 
@@ -48,19 +70,24 @@ const ManageBank = () => {
   const toggleStatus = async (bank) => {
     const newStatus = bank.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/banks/${bank.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        headers,
         body: JSON.stringify({ status: newStatus })
       });
 
       if (response.ok) {
         setBanks(banks.map(b => b.id === bank.id ? { ...b, status: newStatus } : b));
+      } else if (response.status === 401) {
+        navigate('/login');
       } else {
         alert('Failed to update bank status');
       }
     } catch (err) {
-      alert('Network error updating bank');
+      if (err.message !== 'Not authenticated') {
+        alert('Network error updating bank');
+      }
     }
   };
 
@@ -68,9 +95,10 @@ const ManageBank = () => {
   const handleAddBank = async (e) => {
     e.preventDefault();
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/banks', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        headers,
         body: JSON.stringify(formData)
       });
 
@@ -78,12 +106,16 @@ const ManageBank = () => {
         setShowAddModal(false);
         resetForm();
         fetchBanks();
+      } else if (response.status === 401) {
+        navigate('/login');
       } else {
         const error = await response.json();
         alert(`Failed to add bank: ${error.message || 'Unknown error'}`);
       }
     } catch (err) {
-      alert('Network error adding bank');
+      if (err.message !== 'Not authenticated') {
+        alert('Network error adding bank');
+      }
     }
   };
 
@@ -91,9 +123,10 @@ const ManageBank = () => {
   const handleUpdateBank = async (e) => {
     e.preventDefault();
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/banks/${editingBank.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        headers,
         body: JSON.stringify(formData)
       });
 
@@ -101,12 +134,16 @@ const ManageBank = () => {
         setEditingBank(null);
         resetForm();
         fetchBanks();
+      } else if (response.status === 401) {
+        navigate('/login');
       } else {
         const error = await response.json();
         alert(`Failed to update bank: ${error.message || 'Unknown error'}`);
       }
     } catch (err) {
-      alert('Network error updating bank');
+      if (err.message !== 'Not authenticated') {
+        alert('Network error updating bank');
+      }
     }
   };
 
@@ -114,18 +151,23 @@ const ManageBank = () => {
   const handleDeleteBank = async (bank) => {
     if (!confirm(`Are you sure you want to delete ${bank.bankName}?`)) return;
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/banks/${bank.id}`, {
         method: 'DELETE',
-        headers: { 'X-API-Key': API_KEY }
+        headers
       });
 
       if (response.ok) {
         setBanks(banks.filter(b => b.id !== bank.id));
+      } else if (response.status === 401) {
+        navigate('/login');
       } else {
         alert('Failed to delete bank');
       }
     } catch (err) {
-      alert('Network error deleting bank');
+      if (err.message !== 'Not authenticated') {
+        alert('Network error deleting bank');
+      }
     }
   };
 

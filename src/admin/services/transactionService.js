@@ -1,10 +1,9 @@
 /**
  * Admin Transaction Service
  * Manages transactions across all users for admin panel
- * Uses real API endpoints for deposits
- * API calls use relative URLs which are proxied by Vite (dev) or Vercel serverless functions (prod)
+ * Uses real API endpoints with Keycloak JWT authentication
  */
-import { API_KEY } from '../../services/api';
+import { keycloakService } from '../../services/keycloakService';
 
 // LocalStorage keys for withdrawals (no API yet)
 const PENDING_TRANSACTIONS_KEY = 'admin_pending_transactions';
@@ -12,9 +11,18 @@ const ALL_TRANSACTIONS_KEY = 'admin_all_transactions';
 const USER_CACHE_KEY = 'admin_user_cache';
 
 /**
- * NOTE: Wallet balance is now updated internally by the backend when deposits/withdrawals are approved.
- * No need to call a separate wallet API - backend handles it automatically.
+ * Get auth headers with JWT token
  */
+const getAuthHeaders = async () => {
+  const token = await keycloakService.getValidToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  };
+};
 
 /**
  * Get user info cache from localStorage
@@ -64,9 +72,8 @@ const lookupUserInfo = async (accountId) => {
 
   // Try API lookup
   try {
-    const response = await fetch(`/api/accounts/${accountId}`, {
-      headers: { 'X-API-Key': API_KEY }
-    });
+    const headers = await getAuthHeaders();
+    const response = await fetch(`/api/accounts/${accountId}`, { headers });
     if (response.ok) {
       const account = await response.json();
       const userInfo = {
@@ -124,49 +131,35 @@ const saveAllTransactionsHistory = (transactions) => {
 export const transactionService = {
   /**
    * Get all transactions (deposits and withdrawals from API)
-   * @param {Object} filters - Filter options
-   * @returns {Promise<Object>} - Transactions list with stats
    */
   async getAllTransactions(filters = {}) {
     let allTransactions = [];
     let apiDeposits = [];
     let apiWithdrawals = [];
 
-    // Fetch deposits from API based on status filter
     try {
-      let depositEndpoint = `/api/admin/deposits/pending`;
+      const headers = await getAuthHeaders();
 
+      // Fetch deposits from API based on status filter
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
-        depositEndpoint = `/api/admin/deposits/status/COMPLETED`;
+        const response = await fetch(`/api/admin/deposits/status/COMPLETED`, { headers });
+        if (response.ok) apiDeposits = await response.json();
       } else if (filters.status === 'REJECTED') {
-        depositEndpoint = `/api/admin/deposits/status/REJECTED`;
-      } else if (filters.status === 'ALL') {
-        // Fetch all statuses
+        const response = await fetch(`/api/admin/deposits/status/REJECTED`, { headers });
+        if (response.ok) apiDeposits = await response.json();
+      } else if (filters.status === 'ALL' || !filters.status) {
         const [pending, completed, rejected] = await Promise.all([
-          fetch(`/api/admin/deposits/pending`, {
-            headers: { 'X-API-Key': API_KEY }
-          }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/deposits/status/COMPLETED`, {
-            headers: { 'X-API-Key': API_KEY }
-          }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/deposits/status/REJECTED`, {
-            headers: { 'X-API-Key': API_KEY }
-          }).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`/api/admin/deposits/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`/api/admin/deposits/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`/api/admin/deposits/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         apiDeposits = [...pending, ...completed, ...rejected];
+      } else {
+        const response = await fetch(`/api/admin/deposits/pending`, { headers });
+        if (response.ok) apiDeposits = await response.json();
       }
 
-      if (filters.status !== 'ALL') {
-        const response = await fetch(depositEndpoint, {
-          headers: { 'X-API-Key': API_KEY }
-        });
-
-        if (response.ok) {
-          apiDeposits = await response.json();
-        }
-      }
-
-      // Transform API deposits to our format and enrich with user info
+      // Transform API deposits
       const deposits = await Promise.all(apiDeposits.map(async (d) => {
         const userInfo = await lookupUserInfo(d.accountId);
         return {
@@ -191,51 +184,38 @@ export const transactionService = {
       console.error('Error fetching deposits from API:', error);
     }
 
-    // Fetch withdrawals from API based on status filter
+    // Fetch withdrawals from API
     try {
-      let withdrawalEndpoint = `/api/admin/withdrawals/pending`;
+      const headers = await getAuthHeaders();
 
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
-        withdrawalEndpoint = `/api/admin/withdrawals/status/COMPLETED`;
+        const response = await fetch(`/api/admin/withdrawals/status/COMPLETED`, { headers });
+        if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'REJECTED') {
-        withdrawalEndpoint = `/api/admin/withdrawals/status/REJECTED`;
-      } else if (filters.status === 'ALL') {
-        // Fetch all statuses for withdrawals
+        const response = await fetch(`/api/admin/withdrawals/status/REJECTED`, { headers });
+        if (response.ok) apiWithdrawals = await response.json();
+      } else if (filters.status === 'ALL' || !filters.status) {
         const [pending, completed, rejected] = await Promise.all([
-          fetch(`/api/admin/withdrawals/pending`, {
-            headers: { 'X-API-Key': API_KEY }
-          }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/withdrawals/status/COMPLETED`, {
-            headers: { 'X-API-Key': API_KEY }
-          }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/withdrawals/status/REJECTED`, {
-            headers: { 'X-API-Key': API_KEY }
-          }).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         apiWithdrawals = [...pending, ...completed, ...rejected];
+      } else {
+        const response = await fetch(`/api/admin/withdrawals/pending`, { headers });
+        if (response.ok) apiWithdrawals = await response.json();
       }
 
-      if (filters.status !== 'ALL') {
-        const response = await fetch(withdrawalEndpoint, {
-          headers: { 'X-API-Key': API_KEY }
-        });
-
-        if (response.ok) {
-          apiWithdrawals = await response.json();
-        }
-      }
-
-      // Transform API withdrawals to our format and enrich with user info
+      // Transform API withdrawals
       const withdrawals = await Promise.all(apiWithdrawals.map(async (w) => {
         const userInfo = await lookupUserInfo(w.accountId);
-        // Ensure withdrawal ID has WD prefix for consistent handling
         const rawId = w.withdrawId || w.withdrawalId || w.requestId || w.id;
         const withdrawId = rawId && !String(rawId).startsWith('WD') && !String(rawId).startsWith('WTH')
           ? `WD${rawId}`
           : String(rawId);
         return {
           id: withdrawId,
-          originalId: rawId, // Keep original ID for API calls
+          originalId: rawId,
           accountId: w.accountId,
           username: userInfo.username,
           phone: userInfo.phone,
@@ -259,26 +239,6 @@ export const transactionService = {
     } catch (error) {
       console.error('Error fetching withdrawals from API:', error);
     }
-
-    // Get all localStorage transactions (fallback for offline mode)
-    const pendingTransactions = JSON.parse(localStorage.getItem(PENDING_TRANSACTIONS_KEY) || '[]');
-    const historyTransactions = getAllTransactionsHistory();
-
-    // Combine pending and history localStorage transactions
-    let localTransactions = [...pendingTransactions, ...historyTransactions];
-
-    // Filter by status if needed
-    if (filters.status && filters.status !== 'ALL') {
-      localTransactions = localTransactions.filter(tx =>
-        tx.status.toUpperCase() === filters.status.toUpperCase()
-      );
-    }
-
-    // Only add local transactions that aren't already in API results
-    const apiIds = new Set(allTransactions.map(t => t.id));
-    localTransactions = localTransactions.filter(tx => !apiIds.has(tx.id));
-
-    allTransactions = [...allTransactions, ...localTransactions];
 
     // Apply additional filters
     if (filters.type && filters.type !== 'ALL') {
@@ -318,16 +278,6 @@ export const transactionService = {
       );
     }
 
-    if (filters.amountMin) {
-      const min = parseFloat(filters.amountMin);
-      allTransactions = allTransactions.filter(tx => tx.amount >= min);
-    }
-
-    if (filters.amountMax) {
-      const max = parseFloat(filters.amountMax);
-      allTransactions = allTransactions.filter(tx => tx.amount <= max);
-    }
-
     // Sort by date (newest first)
     allTransactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -352,13 +302,11 @@ export const transactionService = {
 
   /**
    * Get deposit statistics from API
-   * @returns {Promise<Object>} - Statistics
    */
   async getStats() {
     try {
-      const response = await fetch(`/api/admin/deposits/stats`, {
-        headers: { 'X-API-Key': API_KEY }
-      });
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/deposits/stats`, { headers });
 
       if (response.ok) {
         const stats = await response.json();
@@ -382,39 +330,16 @@ export const transactionService = {
 
   /**
    * Approve a transaction (deposit or withdrawal)
-   * Uses: POST /api/admin/deposits/{requestId}/approve or /api/admin/withdrawals/{requestId}/approve
-   * Backend automatically updates the user's wallet balance
-   * @param {string} transactionId - Transaction ID to approve
-   * @param {string} adminNotes - Optional admin notes
-   * @param {Object} txInfo - Optional transaction info (accountId, amount)
-   * @returns {Promise<Object>} - Result
    */
   async approveTransaction(transactionId, adminNotes = '', txInfo = null) {
+    const headers = await getAuthHeaders();
+
     // Check if it's a deposit (starts with DEP)
     if (transactionId.startsWith('DEP')) {
       try {
-        // Get deposit details for local UI update
-        let accountId = txInfo?.accountId;
-        let amount = txInfo?.amount;
-
-        if (!accountId || !amount) {
-          const depositResponse = await fetch(`/api/admin/deposits/${transactionId}`, {
-            headers: { 'X-API-Key': API_KEY }
-          });
-          if (depositResponse.ok) {
-            const deposit = await depositResponse.json();
-            accountId = deposit.accountId;
-            amount = deposit.amount;
-          }
-        }
-
-        // Call approve API - backend handles wallet credit internally
         const response = await fetch(`/api/admin/deposits/${transactionId}/approve`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': API_KEY
-          },
+          headers,
           body: JSON.stringify({
             adminId: 'admin1',
             adminNotes: adminNotes || 'Approved via admin panel'
@@ -423,13 +348,6 @@ export const transactionService = {
 
         if (response.ok) {
           const data = await response.json();
-
-          // Update local cache for immediate UI feedback (same browser)
-          // Backend has already credited the actual balance
-          if (accountId && amount) {
-            await this.updateUserBalance(accountId, amount, 'DEPOSIT');
-          }
-
           return {
             success: true,
             depositId: transactionId,
@@ -438,66 +356,31 @@ export const transactionService = {
           };
         } else {
           const errorText = await response.text();
-          console.error('Deposit approval failed:', response.status, errorText);
           let errorMessage = `Error ${response.status}: `;
           try {
             const errorJson = JSON.parse(errorText);
-            errorMessage += errorJson.message || errorJson.error || errorJson.detail || JSON.stringify(errorJson);
+            errorMessage += errorJson.message || errorJson.error || JSON.stringify(errorJson);
           } catch {
             errorMessage += errorText || 'Failed to approve deposit';
           }
-          return {
-            success: false,
-            error: errorMessage
-          };
+          return { success: false, error: errorMessage };
         }
       } catch (error) {
-        console.error('Error approving deposit:', error);
         return { success: false, error: `Network error: ${error.message}` };
       }
     }
 
-    // Check if it's a withdrawal (starts with WD or WTH)
+    // Check if it's a withdrawal
     if (transactionId.startsWith('WD') || transactionId.startsWith('WTH')) {
       try {
-        // Get withdrawal details for local UI update
-        let accountId = txInfo?.accountId;
-        let amount = txInfo?.amount;
-        // Use originalId for API calls (strip WD prefix if we added it)
         let apiId = txInfo?.originalId || transactionId;
         if (apiId.startsWith('WD') && !txInfo?.originalId) {
-          // Try without the prefix first (in case backend uses numeric IDs)
           apiId = transactionId.replace(/^WD/, '');
         }
 
-        if (!accountId || !amount) {
-          // Try fetching with original ID first, then with full ID
-          let withdrawalResponse = await fetch(`/api/admin/withdrawals/${apiId}`, {
-            headers: { 'X-API-Key': API_KEY }
-          });
-          if (!withdrawalResponse.ok && apiId !== transactionId) {
-            withdrawalResponse = await fetch(`/api/admin/withdrawals/${transactionId}`, {
-              headers: { 'X-API-Key': API_KEY }
-            });
-          }
-          if (withdrawalResponse.ok) {
-            const withdrawal = await withdrawalResponse.json();
-            accountId = withdrawal.accountId;
-            amount = withdrawal.amount;
-            // Use the ID format that worked
-            if (withdrawal.withdrawId || withdrawal.withdrawalId) {
-              apiId = withdrawal.withdrawId || withdrawal.withdrawalId;
-            }
-          }
-        }
-
-        // Call approve API - backend handles wallet debit internally
         const response = await fetch(`/api/admin/withdrawals/${apiId}/approve`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': API_KEY
-          },
+          headers,
           body: JSON.stringify({
             adminId: 'admin1',
             adminNotes: adminNotes || 'Approved via admin panel'
@@ -506,12 +389,6 @@ export const transactionService = {
 
         if (response.ok) {
           const data = await response.json();
-
-          // Update local cache for immediate UI feedback
-          if (accountId && amount) {
-            await this.updateUserBalance(accountId, amount, 'WITHDRAWAL');
-          }
-
           return {
             success: true,
             withdrawId: transactionId,
@@ -520,87 +397,35 @@ export const transactionService = {
           };
         } else {
           const errorText = await response.text();
-          console.error('Withdrawal approval failed:', response.status, errorText);
           let errorMessage = `Error ${response.status}: `;
           try {
             const errorJson = JSON.parse(errorText);
-            errorMessage += errorJson.message || errorJson.error || errorJson.detail || JSON.stringify(errorJson);
+            errorMessage += errorJson.message || errorJson.error || JSON.stringify(errorJson);
           } catch {
             errorMessage += errorText || 'Failed to approve withdrawal';
           }
-          return {
-            success: false,
-            error: errorMessage
-          };
+          return { success: false, error: errorMessage };
         }
       } catch (error) {
-        console.error('Error approving withdrawal:', error);
         return { success: false, error: `Network error: ${error.message}` };
       }
     }
 
-    // Handle localStorage transaction approval (fallback for offline mode)
-    const pending = JSON.parse(localStorage.getItem(PENDING_TRANSACTIONS_KEY) || '[]');
-    const index = pending.findIndex(tx => tx.id === transactionId);
-
-    if (index === -1) {
-      return { success: false, error: 'Transaction not found' };
-    }
-
-    const transaction = pending[index];
-    const txType = transaction.type?.toUpperCase() || 'WITHDRAWAL';
-
-    // Update user's wallet balance based on transaction type
-    const walletUpdated = await this.updateUserBalance(
-      transaction.accountId,
-      transaction.amount,
-      txType
-    );
-
-    if (!walletUpdated.success) {
-      return { success: false, error: 'Failed to update user balance' };
-    }
-
-    // Move to history with approved status
-    transaction.status = 'APPROVED';
-    transaction.updatedAt = new Date().toISOString();
-    transaction.adminNotes = adminNotes;
-    transaction.processedAt = new Date().toISOString();
-
-    // Remove from pending
-    pending.splice(index, 1);
-    savePendingTransactions(pending);
-
-    // Add to history
-    const history = getAllTransactionsHistory();
-    history.unshift(transaction);
-    saveAllTransactionsHistory(history);
-
-    return {
-      success: true,
-      transaction,
-      message: `${txType === 'DEPOSIT' ? 'Deposit' : 'Withdrawal'} ${transactionId} approved successfully`
-    };
+    return { success: false, error: 'Unknown transaction type' };
   },
 
   /**
    * Reject a transaction (deposit or withdrawal)
-   * Uses: POST /api/admin/deposits/{requestId}/reject or /api/admin/withdrawals/{requestId}/reject
-   * @param {string} transactionId - Transaction ID to reject
-   * @param {string} reason - Rejection reason
-   * @param {string} originalId - Original ID for API calls (optional, for withdrawals with prefixed IDs)
-   * @returns {Promise<Object>} - Result
    */
   async rejectTransaction(transactionId, reason = '', originalId = null) {
-    // Check if it's a deposit (starts with DEP)
+    const headers = await getAuthHeaders();
+
+    // Check if it's a deposit
     if (transactionId.startsWith('DEP')) {
       try {
         const response = await fetch(`/api/admin/deposits/${transactionId}/reject`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': API_KEY
-          },
+          headers,
           body: JSON.stringify({
             adminId: 'admin1',
             adminNotes: reason || 'Rejected via admin panel'
@@ -617,31 +442,23 @@ export const transactionService = {
           };
         } else {
           const error = await response.json().catch(() => ({}));
-          return {
-            success: false,
-            error: error.message || 'Failed to reject deposit'
-          };
+          return { success: false, error: error.message || 'Failed to reject deposit' };
         }
       } catch (error) {
-        console.error('Error rejecting deposit:', error);
         return { success: false, error: 'Network error while rejecting deposit' };
       }
     }
 
-    // Check if it's a withdrawal (starts with WD or WTH)
+    // Check if it's a withdrawal
     if (transactionId.startsWith('WD') || transactionId.startsWith('WTH')) {
       try {
-        // Use originalId for API calls (strip WD prefix if we added it)
         let apiId = originalId || transactionId;
         if (apiId.startsWith('WD') && !originalId) {
           apiId = transactionId.replace(/^WD/, '');
         }
         const response = await fetch(`/api/admin/withdrawals/${apiId}/reject`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': API_KEY
-          },
+          headers,
           body: JSON.stringify({
             adminId: 'admin1',
             adminNotes: reason || 'Rejected via admin panel'
@@ -658,153 +475,23 @@ export const transactionService = {
           };
         } else {
           const error = await response.json().catch(() => ({}));
-          return {
-            success: false,
-            error: error.message || 'Failed to reject withdrawal'
-          };
+          return { success: false, error: error.message || 'Failed to reject withdrawal' };
         }
       } catch (error) {
-        console.error('Error rejecting withdrawal:', error);
         return { success: false, error: 'Network error while rejecting withdrawal' };
       }
     }
 
-    // Handle localStorage transaction rejection (fallback for offline mode)
-    const pending = JSON.parse(localStorage.getItem(PENDING_TRANSACTIONS_KEY) || '[]');
-    const index = pending.findIndex(tx => tx.id === transactionId);
-
-    if (index === -1) {
-      return { success: false, error: 'Transaction not found' };
-    }
-
-    const transaction = pending[index];
-
-    // Move to history with rejected status
-    transaction.status = 'REJECTED';
-    transaction.updatedAt = new Date().toISOString();
-    transaction.rejectionReason = reason;
-    transaction.processedAt = new Date().toISOString();
-
-    // Remove from pending
-    pending.splice(index, 1);
-    savePendingTransactions(pending);
-
-    // Add to history
-    const history = getAllTransactionsHistory();
-    history.unshift(transaction);
-    saveAllTransactionsHistory(history);
-
-    return {
-      success: true,
-      transaction,
-      message: `Transaction ${transactionId} rejected`
-    };
-  },
-
-  /**
-   * Update user's wallet balance after withdrawal approval
-   * @param {string} accountId - User's account ID
-   * @param {number} amount - Transaction amount
-   * @param {string} type - 'WITHDRAWAL'
-   * @returns {Promise<Object>} - Result
-   */
-  async updateUserBalance(accountId, amount, type) {
-    try {
-      const walletsKey = 'local_wallets';
-      const walletsStr = localStorage.getItem(walletsKey);
-      const wallets = walletsStr ? JSON.parse(walletsStr) : {};
-
-      let wallet = wallets[accountId];
-
-      if (!wallet) {
-        for (const [, w] of Object.entries(wallets)) {
-          if (w.accountId === accountId) {
-            wallet = w;
-            break;
-          }
-        }
-      }
-
-      // If no wallet exists, create one with the user's current balance
-      if (!wallet) {
-        // Get current balance from user object
-        let currentBalance = 0;
-        const userKeys = ['current_user', 'user'];
-        for (const key of userKeys) {
-          const userStr = localStorage.getItem(key);
-          if (userStr) {
-            try {
-              const user = JSON.parse(userStr);
-              if (user.accountId === accountId || user.id === accountId) {
-                currentBalance = user.balance || 0;
-                break;
-              }
-            } catch (e) {
-              // Ignore
-            }
-          }
-        }
-
-        wallet = {
-          walletId: `WAL-${Date.now()}`,
-          accountId: accountId,
-          balance: currentBalance,
-          currency: 'AUD',
-          createdAt: new Date().toISOString()
-        };
-      }
-
-      const currentBalance = wallet.balance || 0;
-
-      if (type === 'WITHDRAWAL') {
-        if (currentBalance < amount) {
-          return { success: false, error: 'Insufficient balance' };
-        }
-        wallet.balance = currentBalance - amount;
-      } else if (type === 'DEPOSIT') {
-        wallet.balance = currentBalance + amount;
-      }
-
-      wallet.updatedAt = new Date().toISOString();
-      wallets[accountId] = wallet;
-      localStorage.setItem(walletsKey, JSON.stringify(wallets));
-
-      // Also update the current user if they're logged in (check both localStorage keys)
-      const userKeys = ['current_user', 'user'];
-      for (const key of userKeys) {
-        const userStr = localStorage.getItem(key);
-        if (userStr) {
-          try {
-            const user = JSON.parse(userStr);
-            if (user.accountId === accountId || user.id === accountId) {
-              user.balance = wallet.balance;
-              user.availableBalance = wallet.balance;
-              localStorage.setItem(key, JSON.stringify(user));
-            }
-          } catch (e) {
-            console.error('Error updating user balance in', key, e);
-          }
-        }
-      }
-
-      return { success: true, newBalance: wallet.balance };
-
-    } catch (error) {
-      console.error('Error updating user balance:', error);
-      return { success: false, error: error.message };
-    }
+    return { success: false, error: 'Unknown transaction type' };
   },
 
   /**
    * Get a single deposit by ID
-   * @param {string} depositId - Deposit ID
-   * @returns {Promise<Object>} - Deposit details
    */
   async getDeposit(depositId) {
     try {
-      const response = await fetch(`/api/admin/deposits/${depositId}`, {
-        headers: { 'X-API-Key': API_KEY }
-      });
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/deposits/${depositId}`, { headers });
 
       if (response.ok) {
         const deposit = await response.json();
@@ -830,14 +517,11 @@ export const transactionService = {
 
   /**
    * Get deposits by account ID
-   * @param {string} accountId - Account ID
-   * @returns {Promise<Object>} - Deposits list
    */
   async getDepositsByAccount(accountId) {
     try {
-      const response = await fetch(`/api/admin/deposits/account/${accountId}`, {
-        headers: { 'X-API-Key': API_KEY }
-      });
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/admin/deposits/account/${accountId}`, { headers });
 
       if (response.ok) {
         const deposits = await response.json();

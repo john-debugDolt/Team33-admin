@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiTrendingUp, FiRefreshCw, FiDownload, FiUsers, FiStar, FiGift, FiCreditCard, FiPercent, FiDollarSign, FiHash, FiAward, FiUserCheck, FiActivity, FiBarChart2, FiMessageSquare, FiList, FiUserPlus, FiChevronRight } from 'react-icons/fi';
-
-const API_KEY = 'team33-admin-secret-key-2024';
+import { keycloakService } from '../../services/keycloakService';
 
 // Report sections/sub-pages
 const REPORT_SECTIONS = [
@@ -25,6 +25,7 @@ const REPORT_SECTIONS = [
 ];
 
 const Reports = () => {
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('transactions');
   const [displayMode, setDisplayMode] = useState('Daily');
   const [formData, setFormData] = useState({
@@ -48,16 +49,31 @@ const Reports = () => {
   const [customerData, setCustomerData] = useState([]);
   const [topCustomers, setTopCustomers] = useState([]);
 
+  // Get auth headers with JWT token
+  const getAuthHeaders = async () => {
+    const token = await keycloakService.getValidToken();
+    if (!token) {
+      navigate('/login');
+      throw new Error('Not authenticated');
+    }
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    };
+  };
+
   // Fetch report data from API
   const fetchReportData = async () => {
     setLoading(true);
     setError(null);
 
     try {
+      const headers = await getAuthHeaders();
+
       const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch('/api/admin/deposits/all', { headers: { 'X-API-Key': API_KEY } })
+        fetch('/api/admin/deposits/all', { headers })
           .then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/admin/withdrawals/all', { headers: { 'X-API-Key': API_KEY } })
+        fetch('/api/admin/withdrawals/all', { headers })
           .then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
@@ -66,9 +82,9 @@ const Reports = () => {
 
       if (deposits.length === 0) {
         const [pending, completed] = await Promise.all([
-          fetch('/api/admin/deposits/pending', { headers: { 'X-API-Key': API_KEY } })
+          fetch('/api/admin/deposits/pending', { headers })
             .then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch('/api/admin/deposits/status/COMPLETED', { headers: { 'X-API-Key': API_KEY } })
+          fetch('/api/admin/deposits/status/COMPLETED', { headers })
             .then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         deposits = [...(Array.isArray(pending) ? pending : []), ...(Array.isArray(completed) ? completed : [])];
@@ -76,9 +92,9 @@ const Reports = () => {
 
       if (withdrawals.length === 0) {
         const [pending, completed] = await Promise.all([
-          fetch('/api/admin/withdrawals/pending', { headers: { 'X-API-Key': API_KEY } })
+          fetch('/api/admin/withdrawals/pending', { headers })
             .then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch('/api/admin/withdrawals/status/COMPLETED', { headers: { 'X-API-Key': API_KEY } })
+          fetch('/api/admin/withdrawals/status/COMPLETED', { headers })
             .then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         withdrawals = [...(Array.isArray(pending) ? pending : []), ...(Array.isArray(completed) ? completed : [])];
@@ -205,6 +221,11 @@ const Reports = () => {
 
   // Re-fetch when displayMode or date range changes
   useEffect(() => {
+    // Check authentication on mount
+    if (!keycloakService.isAuthenticated()) {
+      navigate('/login');
+      return;
+    }
     fetchReportData();
   }, [displayMode, formData.periodStart, formData.periodEnd, formData.type]);
 
