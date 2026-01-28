@@ -5,8 +5,8 @@
  * NOTE: Authentication is currently BYPASSED for development
  */
 
-// BYPASS AUTH - Set to false to enable real Keycloak authentication
-const BYPASS_AUTH = true;
+// BYPASS AUTH - Set to true to bypass Keycloak authentication for development
+const BYPASS_AUTH = false;
 
 // Keycloak configuration from environment variables
 const KEYCLOAK_URL_EXTERNAL = import.meta.env.VITE_KEYCLOAK_URL || 'http://k8s-team33-keycloak-320152ed2f-65380cdab2265c8a.elb.ap-southeast-2.amazonaws.com';
