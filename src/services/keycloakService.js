@@ -1,7 +1,12 @@
 /**
  * Keycloak Authentication Service
  * Handles admin/staff authentication via Keycloak OAuth2
+ *
+ * NOTE: Authentication is currently BYPASSED for development
  */
+
+// BYPASS AUTH - Set to false to enable real Keycloak authentication
+const BYPASS_AUTH = true;
 
 // Keycloak configuration from environment variables
 const KEYCLOAK_URL_EXTERNAL = import.meta.env.VITE_KEYCLOAK_URL || 'http://k8s-team33-keycloak-320152ed2f-65380cdab2265c8a.elb.ap-southeast-2.amazonaws.com';
@@ -12,6 +17,20 @@ const KEYCLOAK_CLIENT_SECRET = import.meta.env.VITE_KEYCLOAK_CLIENT_SECRET || ''
 // Use proxy URL in development to avoid CORS issues
 const isDev = import.meta.env.DEV;
 const KEYCLOAK_URL = isDev ? '/auth/keycloak' : KEYCLOAK_URL_EXTERNAL;
+
+// Mock user for bypassed auth
+const MOCK_USER = {
+  id: 'mock-admin-id',
+  username: 'admin',
+  name: 'Admin User',
+  email: 'admin@team33.com',
+  roles: ['admin'],
+  isAdmin: true,
+  isStaff: true,
+};
+
+// Mock token for bypassed auth (this won't work with real API calls that validate JWT)
+const MOCK_TOKEN = 'mock-jwt-token-for-development';
 
 // Storage keys
 const ADMIN_TOKEN_KEY = 'team33_admin_token';
@@ -69,6 +88,15 @@ class KeycloakService {
    * Login with username and password (Resource Owner Password Grant)
    */
   async login(username, password) {
+    // BYPASS: Always succeed
+    if (BYPASS_AUTH) {
+      console.log('[Keycloak] Auth bypassed - logging in as mock admin');
+      localStorage.setItem(ADMIN_TOKEN_KEY, MOCK_TOKEN);
+      localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(MOCK_USER));
+      localStorage.setItem(TOKEN_EXPIRY_KEY, (Date.now() + 86400000).toString()); // 24 hours
+      return { success: true, user: MOCK_USER, accessToken: MOCK_TOKEN };
+    }
+
     const tokenEndpoint = getTokenEndpoint();
     console.log('[Keycloak] Attempting login to:', tokenEndpoint);
     console.log('[Keycloak] Client ID:', KEYCLOAK_CLIENT_ID);
@@ -245,6 +273,11 @@ class KeycloakService {
    * Get valid access token (refreshes if needed)
    */
   async getValidToken() {
+    // BYPASS: Always return mock token
+    if (BYPASS_AUTH) {
+      return MOCK_TOKEN;
+    }
+
     if (this.isTokenExpired()) {
       const result = await this.refreshToken();
       if (!result.success) {
@@ -272,6 +305,11 @@ class KeycloakService {
    * Get current admin user
    */
   getCurrentUser() {
+    // BYPASS: Always return mock user
+    if (BYPASS_AUTH) {
+      return MOCK_USER;
+    }
+
     try {
       const userJson = localStorage.getItem(ADMIN_USER_KEY);
       return userJson ? JSON.parse(userJson) : null;
@@ -284,6 +322,11 @@ class KeycloakService {
    * Check if user is authenticated
    */
   isAuthenticated() {
+    // BYPASS: Always authenticated
+    if (BYPASS_AUTH) {
+      return true;
+    }
+
     const token = this.getAccessToken();
     const user = this.getCurrentUser();
     return token && user && !this.isTokenExpired();
@@ -293,6 +336,7 @@ class KeycloakService {
    * Check if user has admin role
    */
   isAdmin() {
+    if (BYPASS_AUTH) return true;
     const user = this.getCurrentUser();
     return user?.isAdmin || false;
   }
@@ -301,6 +345,7 @@ class KeycloakService {
    * Check if user has staff role
    */
   isStaff() {
+    if (BYPASS_AUTH) return true;
     const user = this.getCurrentUser();
     return user?.isStaff || false;
   }
