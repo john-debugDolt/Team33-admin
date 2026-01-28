@@ -45,14 +45,18 @@ const extractUserFromToken = (token) => {
   const payload = parseJwt(token);
   if (!payload) return null;
 
+  // Get roles and normalize to lowercase for comparison
+  const roles = payload.realm_access?.roles || [];
+  const rolesLower = roles.map(r => r.toLowerCase());
+
   return {
     id: payload.sub,
     username: payload.preferred_username,
     name: payload.name || payload.preferred_username,
     email: payload.email,
-    roles: payload.realm_access?.roles || [],
-    isAdmin: payload.realm_access?.roles?.includes('admin') || false,
-    isStaff: payload.realm_access?.roles?.includes('staff') || false,
+    roles: roles,
+    isAdmin: rolesLower.includes('admin'),
+    isStaff: rolesLower.includes('staff'),
   };
 };
 
@@ -65,8 +69,13 @@ class KeycloakService {
    * Login with username and password (Resource Owner Password Grant)
    */
   async login(username, password) {
+    const tokenEndpoint = getTokenEndpoint();
+    console.log('[Keycloak] Attempting login to:', tokenEndpoint);
+    console.log('[Keycloak] Client ID:', KEYCLOAK_CLIENT_ID);
+    console.log('[Keycloak] Realm:', KEYCLOAK_REALM);
+
     try {
-      const response = await fetch(getTokenEndpoint(), {
+      const response = await fetch(tokenEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -80,7 +89,10 @@ class KeycloakService {
         }),
       });
 
+      console.log('[Keycloak] Response status:', response.status);
+
       const data = await response.json();
+      console.log('[Keycloak] Response data:', data.error || 'Token received');
 
       if (!response.ok) {
         return {
@@ -94,6 +106,7 @@ class KeycloakService {
 
       // Extract user from token
       const user = extractUserFromToken(data.access_token);
+      console.log('[Keycloak] User logged in:', user?.username, 'Roles:', user?.roles);
 
       // Store user info
       localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
@@ -107,10 +120,11 @@ class KeycloakService {
         accessToken: data.access_token,
       };
     } catch (error) {
-      console.error('Keycloak login error:', error);
+      console.error('[Keycloak] Login error:', error);
+      console.error('[Keycloak] Token endpoint was:', tokenEndpoint);
       return {
         success: false,
-        error: 'Network error. Please check your connection.',
+        error: `Network error: ${error.message}. Check browser console for details.`,
       };
     }
   }
