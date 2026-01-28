@@ -14,9 +14,10 @@ const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'Team33Casino';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'Team33admin';
 const KEYCLOAK_CLIENT_SECRET = import.meta.env.VITE_KEYCLOAK_CLIENT_SECRET || '';
 
-// Use proxy URL in development to avoid CORS issues
-const isDev = import.meta.env.DEV;
-const KEYCLOAK_URL = isDev ? '/auth/keycloak' : KEYCLOAK_URL_EXTERNAL;
+// Always use proxy URL to avoid CORS and mixed-content issues
+// In dev: Vite proxy handles it
+// In prod: Vercel rewrites handle it (see vercel.json)
+const KEYCLOAK_URL = '/auth/keycloak';
 
 // Mock user for bypassed auth
 const MOCK_USER = {
