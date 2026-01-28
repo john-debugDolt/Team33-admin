@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiMessageSquare, FiCreditCard, FiRefreshCw, FiX, FiUser, FiPhone, FiCalendar, FiDollarSign } from 'react-icons/fi';
 import { formatDateTime } from '../utils/dateUtils';
-
-const API_KEY = 'team33-admin-secret-key-2024';
+import { keycloakService } from '../../services/keycloakService';
+import { adminApiService } from '../../services/adminApiService';
 
 const Users = () => {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     name: '',
     mobile: '',
@@ -23,7 +25,16 @@ const Users = () => {
   const [userTransactions, setUserTransactions] = useState([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
 
-  // Fetch users from API with caching
+  // Check authentication on mount
+  useEffect(() => {
+    if (!keycloakService.isAuthenticated()) {
+      navigate('/login');
+      return;
+    }
+    fetchUsers();
+  }, [navigate]);
+
+  // Fetch users from API with JWT authentication
   const fetchUsers = async () => {
     setLoading(true);
     setError(null);
@@ -41,43 +52,45 @@ const Users = () => {
     }
 
     try {
-      const response = await fetch('/api/admin/accounts', {
-        headers: {
-          'X-API-Key': API_KEY
-        }
-      });
+      const result = await adminApiService.getAccounts();
 
-      if (response.ok) {
-        const data = await response.json();
+      if (result.sessionExpired) {
+        navigate('/login');
+        return;
+      }
+
+      if (result.success) {
+        const data = result.data;
 
         // Handle both array and object responses
         const usersArray = Array.isArray(data) ? data : (data.accounts || data.users || data.data || []);
 
-        // Transform API data to our format and fetch real wallet balances
+        // Transform API data to our format
         const transformedUsers = await Promise.all(usersArray.map(async (user) => {
-          // Fetch real wallet balance for this user
+          // Try to fetch real wallet balance for this user
           let realBalance = user.balance || 0;
           try {
-            const walletRes = await fetch(`/api/wallets/account/${user.accountId}`, {
-              headers: { 'X-API-Key': API_KEY }
-            });
-            if (walletRes.ok) {
-              const walletData = await walletRes.json();
-              // Handle both single wallet and array of wallets
-              if (Array.isArray(walletData) && walletData.length > 0) {
-                realBalance = walletData[0].balance || 0;
-              } else if (walletData.balance !== undefined) {
-                realBalance = walletData.balance;
+            const token = await keycloakService.getValidToken();
+            if (token) {
+              const walletRes = await fetch(`/api/wallets/account/${user.accountId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+              });
+              if (walletRes.ok) {
+                const walletData = await walletRes.json();
+                if (Array.isArray(walletData) && walletData.length > 0) {
+                  realBalance = walletData[0].balance || 0;
+                } else if (walletData.balance !== undefined) {
+                  realBalance = walletData.balance;
+                }
               }
             }
           } catch (e) {
-            // Use default balance if wallet fetch fails
             console.log('Could not fetch wallet for', user.accountId);
           }
 
           return {
             accountId: user.accountId,
-            createdAt: user.createdAt, // Keep raw date for sorting
+            createdAt: user.createdAt,
             date: formatDateTime(user.createdAt),
             name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.accountId,
             firstName: user.firstName,
@@ -99,22 +112,14 @@ const Users = () => {
         transformedUsers.sort((a, b) => {
           const dateA = new Date(a.createdAt || 0);
           const dateB = new Date(b.createdAt || 0);
-          return dateB - dateA; // Descending order (newest first)
+          return dateB - dateA;
         });
 
         setUsers(transformedUsers);
         setFilteredUsers(transformedUsers);
-        // Cache for faster subsequent loads
         localStorage.setItem('admin_users_cache', JSON.stringify(transformedUsers));
       } else {
-        const errorText = await response.text();
-        console.error('Admin accounts error:', response.status, errorText);
-        try {
-          const errorData = JSON.parse(errorText);
-          setError(`Error ${response.status}: ${errorData.message || errorData.error || 'Failed to fetch users'}`);
-        } catch {
-          setError(`Error ${response.status}: ${errorText || 'Failed to fetch users'}`);
-        }
+        setError(result.error || 'Failed to fetch users');
       }
     } catch (err) {
       console.error('Error fetching users:', err);
@@ -123,10 +128,6 @@ const Users = () => {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchUsers();
-  }, []);
 
   // Search/filter users
   const handleSearch = () => {
@@ -176,14 +177,18 @@ const Users = () => {
     setUserTransactions([]);
 
     try {
+      const token = await keycloakService.getValidToken();
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+
+      const headers = { 'Authorization': `Bearer ${token}` };
+
       // Fetch deposits and withdrawals for this user
       const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch(`/api/deposits/account/${user.accountId}`, {
-          headers: { 'X-API-Key': API_KEY }
-        }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/withdrawals/account/${user.accountId}`, {
-          headers: { 'X-API-Key': API_KEY }
-        }).then(r => r.ok ? r.json() : []).catch(() => [])
+        fetch(`/api/deposits/account/${user.accountId}`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/withdrawals/account/${user.accountId}`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       const deposits = (Array.isArray(depositsRes) ? depositsRes : []).map(d => ({
@@ -221,6 +226,12 @@ const Users = () => {
     setShowTransactionsModal(false);
     setSelectedUser(null);
     setUserTransactions([]);
+  };
+
+  // Logout handler
+  const handleLogout = () => {
+    keycloakService.logout();
+    navigate('/login');
   };
 
   return (
