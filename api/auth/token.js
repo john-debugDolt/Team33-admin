@@ -22,13 +22,21 @@ export default async function handler(req, res) {
   try {
     const tokenUrl = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
-    // Forward the request body
+    // Convert body to URL encoded string if it's an object
+    let bodyString;
+    if (typeof req.body === 'object') {
+      bodyString = new URLSearchParams(req.body).toString();
+    } else {
+      bodyString = req.body;
+    }
+
+    // Forward the request to Keycloak
     const response = await fetch(tokenUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: req.body,
+      body: bodyString,
     });
 
     const data = await response.json();
