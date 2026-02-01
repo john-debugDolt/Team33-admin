@@ -69,13 +69,11 @@ export const removeStoredData = (key) => {
 // Get auth token
 const getToken = () => getStoredData(STORAGE_KEYS.TOKEN);
 
-// API client with auth header support
+// API client (no auth required - backend endpoints are public)
 export const apiClient = {
   async request(endpoint, options = {}) {
-    const token = getToken();
     const headers = {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
       ...options.headers
     };
 

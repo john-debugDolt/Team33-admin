@@ -49,31 +49,16 @@ const Reports = () => {
   const [customerData, setCustomerData] = useState([]);
   const [topCustomers, setTopCustomers] = useState([]);
 
-  // Get auth headers with JWT token
-  const getAuthHeaders = async () => {
-    const token = await keycloakService.getValidToken();
-    if (!token) {
-      navigate('/login');
-      throw new Error('Not authenticated');
-    }
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  };
-
-  // Fetch report data from API
+  // Fetch report data from API (no auth required)
   const fetchReportData = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const headers = await getAuthHeaders();
-
       const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch('/api/admin/deposits/all', { headers })
+        fetch('/api/admin/deposits/all')
           .then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/admin/withdrawals/all', { headers })
+        fetch('/api/admin/withdrawals/all')
           .then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 

@@ -19,39 +19,21 @@ const ManageBank = () => {
     status: 'ACTIVE'
   });
 
-  // Get auth headers with JWT token
-  const getAuthHeaders = async () => {
-    const token = await keycloakService.getValidToken();
-    if (!token) {
-      navigate('/login');
-      throw new Error('Not authenticated');
-    }
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  };
-
-  // Fetch banks from API
+  // Fetch banks from API (no auth required)
   const fetchBanks = async () => {
     setLoading(true);
     setError(null);
     try {
-      const headers = await getAuthHeaders();
-      const response = await fetch('/api/banks', { headers });
+      const response = await fetch('/api/banks');
 
       if (response.ok) {
         const data = await response.json();
         setBanks(Array.isArray(data) ? data : []);
-      } else if (response.status === 401) {
-        navigate('/login');
       } else {
         setError(`Failed to fetch banks: ${response.status}`);
       }
     } catch (err) {
-      if (err.message !== 'Not authenticated') {
-        setError(`Network error: ${err.message}`);
-      }
+      setError(`Network error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -66,39 +48,33 @@ const ManageBank = () => {
     fetchBanks();
   }, []);
 
-  // Toggle bank status
+  // Toggle bank status (no auth required)
   const toggleStatus = async (bank) => {
     const newStatus = bank.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch(`/api/banks/${bank.id}`, {
         method: 'PUT',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
 
       if (response.ok) {
         setBanks(banks.map(b => b.id === bank.id ? { ...b, status: newStatus } : b));
-      } else if (response.status === 401) {
-        navigate('/login');
       } else {
         alert('Failed to update bank status');
       }
     } catch (err) {
-      if (err.message !== 'Not authenticated') {
-        alert('Network error updating bank');
-      }
+      alert('Network error updating bank');
     }
   };
 
-  // Add new bank
+  // Add new bank (no auth required)
   const handleAddBank = async (e) => {
     e.preventDefault();
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch('/api/banks', {
         method: 'POST',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
 
@@ -106,27 +82,22 @@ const ManageBank = () => {
         setShowAddModal(false);
         resetForm();
         fetchBanks();
-      } else if (response.status === 401) {
-        navigate('/login');
       } else {
         const error = await response.json();
         alert(`Failed to add bank: ${error.message || 'Unknown error'}`);
       }
     } catch (err) {
-      if (err.message !== 'Not authenticated') {
-        alert('Network error adding bank');
-      }
+      alert('Network error adding bank');
     }
   };
 
-  // Update bank
+  // Update bank (no auth required)
   const handleUpdateBank = async (e) => {
     e.preventDefault();
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch(`/api/banks/${editingBank.id}`, {
         method: 'PUT',
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
 
@@ -134,40 +105,30 @@ const ManageBank = () => {
         setEditingBank(null);
         resetForm();
         fetchBanks();
-      } else if (response.status === 401) {
-        navigate('/login');
       } else {
         const error = await response.json();
         alert(`Failed to update bank: ${error.message || 'Unknown error'}`);
       }
     } catch (err) {
-      if (err.message !== 'Not authenticated') {
-        alert('Network error updating bank');
-      }
+      alert('Network error updating bank');
     }
   };
 
-  // Delete bank
+  // Delete bank (no auth required)
   const handleDeleteBank = async (bank) => {
     if (!confirm(`Are you sure you want to delete ${bank.bankName}?`)) return;
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch(`/api/banks/${bank.id}`, {
-        method: 'DELETE',
-        headers
+        method: 'DELETE'
       });
 
       if (response.ok) {
         setBanks(banks.filter(b => b.id !== bank.id));
-      } else if (response.status === 401) {
-        navigate('/login');
       } else {
         alert('Failed to delete bank');
       }
     } catch (err) {
-      if (err.message !== 'Not authenticated') {
-        alert('Network error deleting bank');
-      }
+      alert('Network error deleting bank');
     }
   };
 

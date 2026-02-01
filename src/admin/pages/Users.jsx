@@ -70,18 +70,13 @@ const Users = () => {
           // Try to fetch real wallet balance for this user
           let realBalance = user.balance || 0;
           try {
-            const token = await keycloakService.getValidToken();
-            if (token) {
-              const walletRes = await fetch(`/api/wallets/account/${user.accountId}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-              if (walletRes.ok) {
-                const walletData = await walletRes.json();
-                if (Array.isArray(walletData) && walletData.length > 0) {
-                  realBalance = walletData[0].balance || 0;
-                } else if (walletData.balance !== undefined) {
-                  realBalance = walletData.balance;
-                }
+            const walletRes = await fetch(`/api/wallets/account/${user.accountId}`);
+            if (walletRes.ok) {
+              const walletData = await walletRes.json();
+              if (Array.isArray(walletData) && walletData.length > 0) {
+                realBalance = walletData[0].balance || 0;
+              } else if (walletData.balance !== undefined) {
+                realBalance = walletData.balance;
               }
             }
           } catch (e) {
@@ -183,12 +178,10 @@ const Users = () => {
         return;
       }
 
-      const headers = { 'Authorization': `Bearer ${token}` };
-
-      // Fetch deposits and withdrawals for this user
+      // Fetch deposits and withdrawals for this user (no auth required)
       const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch(`/api/deposits/account/${user.accountId}`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/withdrawals/account/${user.accountId}`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+        fetch(`/api/deposits/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`/api/withdrawals/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       const deposits = (Array.isArray(depositsRes) ? depositsRes : []).map(d => ({

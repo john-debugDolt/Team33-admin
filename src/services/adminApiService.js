@@ -1,33 +1,27 @@
 /**
  * Admin API Service
- * Handles authenticated API calls using Keycloak JWT tokens
+ * Backend endpoints are now public (no auth required)
  */
-import { keycloakService } from './keycloakService';
 
-// API base for admin endpoints (proxied through Vite/Vercel)
+// API base for admin endpoints (proxied through Vite/Amplify)
 const ADMIN_API_BASE = '/api/admin';
 
 class AdminApiService {
   /**
-   * Get headers with JWT authorization
+   * Get headers (no auth required)
    */
-  async getAuthHeaders() {
-    const token = await keycloakService.getValidToken();
-    if (!token) {
-      throw new Error('Not authenticated');
-    }
+  getHeaders() {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
     };
   }
 
   /**
-   * Make authenticated API request
+   * Make API request (no auth required)
    */
   async request(endpoint, options = {}) {
     try {
-      const headers = await this.getAuthHeaders();
+      const headers = this.getHeaders();
 
       const response = await fetch(`${ADMIN_API_BASE}${endpoint}`, {
         ...options,
@@ -37,39 +31,9 @@ class AdminApiService {
         },
       });
 
-      // Handle 401 - token expired or invalid
-      if (response.status === 401) {
-        // Try to refresh token
-        const refreshResult = await keycloakService.refreshToken();
-        if (refreshResult.success) {
-          // Retry request with new token
-          const newHeaders = await this.getAuthHeaders();
-          const retryResponse = await fetch(`${ADMIN_API_BASE}${endpoint}`, {
-            ...options,
-            headers: {
-              ...newHeaders,
-              ...options.headers,
-            },
-          });
-          return this.handleResponse(retryResponse);
-        }
-        return {
-          success: false,
-          error: 'Session expired. Please login again.',
-          sessionExpired: true,
-        };
-      }
-
       return this.handleResponse(response);
     } catch (error) {
       console.error('Admin API error:', error);
-      if (error.message === 'Not authenticated') {
-        return {
-          success: false,
-          error: 'Not authenticated. Please login.',
-          sessionExpired: true,
-        };
-      }
       return {
         success: false,
         error: error.message || 'Network error',

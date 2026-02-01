@@ -24,19 +24,6 @@ const BankTx = () => {
     remarks: ''
   });
 
-  // Get auth headers with JWT token
-  const getAuthHeaders = async () => {
-    const token = await keycloakService.getValidToken();
-    if (!token) {
-      navigate('/login');
-      throw new Error('Not authenticated');
-    }
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  };
-
   // Load banks from localStorage first, then fetch from API
   useEffect(() => {
     // Check authentication on mount
@@ -62,10 +49,9 @@ const BankTx = () => {
         }
       }
 
-      // Then fetch fresh data from API
+      // Then fetch fresh data from API (no auth required)
       try {
-        const headers = await getAuthHeaders();
-        const response = await fetch('/api/banks', { headers });
+        const response = await fetch('/api/banks');
         const data = await response.json();
 
         // API can return array directly OR { success: true, banks: [...] }
@@ -145,13 +131,12 @@ const BankTx = () => {
       }
 
       try {
-        // Fetch pending and completed deposits in PARALLEL for speed
+        // Fetch pending and completed deposits in PARALLEL for speed (no auth required)
         console.log('[BankTx] Fetching deposits for bank:', selectedBank);
 
-        const headers = await getAuthHeaders();
         const [pendingResponse, completedResponse] = await Promise.all([
-          fetch(`/api/admin/deposits/pending`, { headers }),
-          fetch(`/api/admin/deposits/status/COMPLETED`, { headers })
+          fetch(`/api/admin/deposits/pending`),
+          fetch(`/api/admin/deposits/status/COMPLETED`)
         ]);
 
         const [pendingRes, completedRes] = await Promise.all([

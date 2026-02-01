@@ -1,9 +1,8 @@
 /**
  * Admin Transaction Service
  * Manages transactions across all users for admin panel
- * Uses real API endpoints with Keycloak JWT authentication
+ * Backend endpoints are now public (no auth required)
  */
-import { keycloakService } from '../../services/keycloakService';
 
 // LocalStorage keys for withdrawals (no API yet)
 const PENDING_TRANSACTIONS_KEY = 'admin_pending_transactions';
@@ -11,16 +10,11 @@ const ALL_TRANSACTIONS_KEY = 'admin_all_transactions';
 const USER_CACHE_KEY = 'admin_user_cache';
 
 /**
- * Get auth headers with JWT token
+ * Get headers (no auth required)
  */
-const getAuthHeaders = async () => {
-  const token = await keycloakService.getValidToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
+const getHeaders = () => {
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`,
   };
 };
 
@@ -72,7 +66,7 @@ const lookupUserInfo = async (accountId) => {
 
   // Try API lookup
   try {
-    const headers = await getAuthHeaders();
+    const headers = getHeaders();
     const response = await fetch(`/api/accounts/${accountId}`, { headers });
     if (response.ok) {
       const account = await response.json();
@@ -138,7 +132,7 @@ export const transactionService = {
     let apiWithdrawals = [];
 
     try {
-      const headers = await getAuthHeaders();
+      const headers = getHeaders();
 
       // Fetch deposits from API based on status filter
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
@@ -186,7 +180,7 @@ export const transactionService = {
 
     // Fetch withdrawals from API
     try {
-      const headers = await getAuthHeaders();
+      const headers = getHeaders();
 
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
         const response = await fetch(`/api/admin/withdrawals/status/COMPLETED`, { headers });
@@ -305,7 +299,7 @@ export const transactionService = {
    */
   async getStats() {
     try {
-      const headers = await getAuthHeaders();
+      const headers = getHeaders();
       const response = await fetch(`/api/admin/deposits/stats`, { headers });
 
       if (response.ok) {
@@ -332,7 +326,7 @@ export const transactionService = {
    * Approve a transaction (deposit or withdrawal)
    */
   async approveTransaction(transactionId, adminNotes = '', txInfo = null) {
-    const headers = await getAuthHeaders();
+    const headers = getHeaders();
 
     // Check if it's a deposit (starts with DEP)
     if (transactionId.startsWith('DEP')) {
@@ -418,7 +412,7 @@ export const transactionService = {
    * Reject a transaction (deposit or withdrawal)
    */
   async rejectTransaction(transactionId, reason = '', originalId = null) {
-    const headers = await getAuthHeaders();
+    const headers = getHeaders();
 
     // Check if it's a deposit
     if (transactionId.startsWith('DEP')) {
@@ -490,7 +484,7 @@ export const transactionService = {
    */
   async getDeposit(depositId) {
     try {
-      const headers = await getAuthHeaders();
+      const headers = getHeaders();
       const response = await fetch(`/api/admin/deposits/${depositId}`, { headers });
 
       if (response.ok) {
@@ -520,7 +514,7 @@ export const transactionService = {
    */
   async getDepositsByAccount(accountId) {
     try {
-      const headers = await getAuthHeaders();
+      const headers = getHeaders();
       const response = await fetch(`/api/admin/deposits/account/${accountId}`, { headers });
 
       if (response.ok) {
