@@ -17,11 +17,9 @@
 
 import { chatStorageService } from './chatStorageService';
 
-// Backend URLs
-const BACKEND_HOST = 'k8s-team33-accounts-4f99fe8193-a4c5da018f68b390.elb.ap-southeast-2.amazonaws.com';
-
-// Use relative URLs for API (proxied through Vite/Vercel)
-const CHAT_API_BASE = '';
+// Backend URLs - call accounts.team33.mx directly
+const BACKEND_HOST = 'accounts.team33.mx';
+const CHAT_API_BASE = 'https://accounts.team33.mx';
 
 // WebSocket: Connect directly to backend (Vercel doesn't proxy WebSocket)
 // Note: Backend is HTTP only, so we use ws:// not wss://

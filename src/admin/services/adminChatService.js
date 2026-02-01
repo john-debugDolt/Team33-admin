@@ -15,8 +15,8 @@
 
 import { chatStorageService } from '../../services/chatStorageService';
 
-const CHAT_API_BASE = '';
-const BACKEND_HOST = 'k8s-team33-accounts-4f99fe8193-a4c5da018f68b390.elb.ap-southeast-2.amazonaws.com';
+const CHAT_API_BASE = 'https://accounts.team33.mx';
+const BACKEND_HOST = 'accounts.team33.mx';
 // WebSocket: use wss:// for secure connections
 const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
 const CHAT_WS_BASE = isSecure ? `wss://${BACKEND_HOST}` : `ws://${BACKEND_HOST}`;
