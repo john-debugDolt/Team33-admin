@@ -8,8 +8,8 @@
 // BYPASS AUTH - Set to true to bypass Keycloak authentication for development
 const BYPASS_AUTH = false;
 
-// Keycloak configuration from environment variables
-const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'http://k8s-team33-keycloak-320152ed2f-65380cdab2265c8a.elb.ap-southeast-2.amazonaws.com';
+// Keycloak configuration - direct URL (Amplify can't proxy to external servers)
+const KEYCLOAK_URL = 'http://k8s-team33-keycloak-320152ed2f-65380cdab2265c8a.elb.ap-southeast-2.amazonaws.com';
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'Team33Casino';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'Team33admin';
 const KEYCLOAK_CLIENT_SECRET = import.meta.env.VITE_KEYCLOAK_CLIENT_SECRET || '';
