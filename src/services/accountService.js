@@ -1,6 +1,9 @@
 // Account Service - User account management via external API with localStorage fallback
 import { API_KEY } from './api';
 
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
+
 const LOCAL_ACCOUNTS_KEY = 'team33_local_accounts';
 
 // Format phone number to international format (Australian +61)
@@ -163,7 +166,7 @@ class AccountService {
     }
 
     try {
-      const response = await fetch(`/api/accounts/${accountId}`, {
+      const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, {
         method: 'GET',
         headers: this.headers,
       });
@@ -201,7 +204,7 @@ class AccountService {
 
     // Try external API
     try {
-      const response = await fetch(`/api/accounts/phone/${encodeURIComponent(formattedPhone)}`, {
+      const response = await fetch(`${API_BASE}/api/accounts/phone/${encodeURIComponent(formattedPhone)}`, {
         method: 'GET',
         headers: this.headers,
       });
@@ -240,7 +243,7 @@ class AccountService {
     // Try external API - check if account exists by phone
     try {
       const encodedPhone = encodeURIComponent(formattedPhone);
-      const response = await fetch(`/api/accounts/phone/${encodedPhone}`, {
+      const response = await fetch(`${API_BASE}/api/accounts/phone/${encodedPhone}`, {
         method: 'GET',
         headers: this.headers,
       });
@@ -270,7 +273,7 @@ class AccountService {
   // Get account by email (kept for compatibility)
   async getAccountByEmail(email) {
     try {
-      const response = await fetch(`/api/accounts/email/${encodeURIComponent(email)}`, {
+      const response = await fetch(`${API_BASE}/api/accounts/email/${encodeURIComponent(email)}`, {
         method: 'GET',
         headers: this.headers,
       });
@@ -297,7 +300,7 @@ class AccountService {
   // Update account information
   async updateAccount(accountId, updates) {
     try {
-      const response = await fetch(`/api/accounts/${accountId}`, {
+      const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, {
         method: 'PUT',
         headers: this.headers,
         body: JSON.stringify(updates),
@@ -325,7 +328,7 @@ class AccountService {
   // Deactivate account
   async deactivateAccount(accountId) {
     try {
-      const response = await fetch(`/api/accounts/${accountId}`, {
+      const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, {
         method: 'DELETE',
         headers: this.headers,
       });

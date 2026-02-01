@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFile, FiAlertTriangle, FiPlus, FiRefreshCw, FiX, FiDownload } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
 
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
+
 const BankTx = () => {
   const navigate = useNavigate();
   // Default to 'all' to show all transactions initially
@@ -135,8 +138,8 @@ const BankTx = () => {
         console.log('[BankTx] Fetching deposits for bank:', selectedBank);
 
         const [pendingResponse, completedResponse] = await Promise.all([
-          fetch(`/api/admin/deposits/pending`),
-          fetch(`/api/admin/deposits/status/COMPLETED`)
+          fetch(`${API_BASE}/api/admin/deposits/pending`),
+          fetch(`${API_BASE}/api/admin/deposits/status/COMPLETED`)
         ]);
 
         const [pendingRes, completedRes] = await Promise.all([
@@ -181,7 +184,7 @@ const BankTx = () => {
           await Promise.all(
             uniqueAccountIds.slice(0, 20).map(async (accountId) => {
               try {
-                const res = await fetch(`/api/accounts/${accountId}`, { headers });
+                const res = await fetch(`${API_BASE}/api/accounts/${accountId}`, { headers });
                 if (res.ok) {
                   const acc = await res.json();
                   accountNames[accountId] = `${acc.firstName || ''} ${acc.lastName || ''}`.trim() || accountId;

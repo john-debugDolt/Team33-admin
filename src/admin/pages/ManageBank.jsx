@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight, FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
 
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
+
 const ManageBank = () => {
   const navigate = useNavigate();
   const [banks, setBanks] = useState([]);
@@ -52,7 +55,7 @@ const ManageBank = () => {
   const toggleStatus = async (bank) => {
     const newStatus = bank.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
-      const response = await fetch(`/api/banks/${bank.id}`, {
+      const response = await fetch(`${API_BASE}/api/banks/${bank.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
@@ -95,7 +98,7 @@ const ManageBank = () => {
   const handleUpdateBank = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`/api/banks/${editingBank.id}`, {
+      const response = await fetch(`${API_BASE}/api/banks/${editingBank.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
@@ -118,7 +121,7 @@ const ManageBank = () => {
   const handleDeleteBank = async (bank) => {
     if (!confirm(`Are you sure you want to delete ${bank.bankName}?`)) return;
     try {
-      const response = await fetch(`/api/banks/${bank.id}`, {
+      const response = await fetch(`${API_BASE}/api/banks/${bank.id}`, {
         method: 'DELETE'
       });
 

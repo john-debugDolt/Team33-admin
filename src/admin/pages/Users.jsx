@@ -5,6 +5,9 @@ import { formatDateTime } from '../utils/dateUtils';
 import { keycloakService } from '../../services/keycloakService';
 import { adminApiService } from '../../services/adminApiService';
 
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
+
 const Users = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -70,7 +73,7 @@ const Users = () => {
           // Try to fetch real wallet balance for this user
           let realBalance = user.balance || 0;
           try {
-            const walletRes = await fetch(`/api/wallets/account/${user.accountId}`);
+            const walletRes = await fetch(`${API_BASE}/api/wallets/account/${user.accountId}`);
             if (walletRes.ok) {
               const walletData = await walletRes.json();
               if (Array.isArray(walletData) && walletData.length > 0) {
@@ -180,8 +183,8 @@ const Users = () => {
 
       // Fetch deposits and withdrawals for this user (no auth required)
       const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch(`/api/deposits/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`/api/withdrawals/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => [])
+        fetch(`${API_BASE}/api/deposits/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE}/api/withdrawals/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       const deposits = (Array.isArray(depositsRes) ? depositsRes : []).map(d => ({

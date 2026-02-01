@@ -3,8 +3,8 @@
  * Backend endpoints are now public (no auth required)
  */
 
-// API base for admin endpoints (proxied through Vite/Amplify)
-const ADMIN_API_BASE = '/api/admin';
+// API base - call accounts.team33.mx directly
+const ADMIN_API_BASE = 'https://accounts.team33.mx/api/admin';
 
 class AdminApiService {
   /**

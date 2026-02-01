@@ -1,31 +1,13 @@
 /**
  * API Configuration
- *
- * Environment Variables:
- * ======================
- * VITE_API_KEY - API key for authenticated endpoints (required for production)
- *
- * API Routing:
- * ============
- * All API calls use relative URLs (/api/...) which are proxied:
- * - Development: vite.config.js proxy rules
- * - Production: vercel.json rewrite rules
- *
- * Backend Endpoints (proxied through /api):
- * - Accounts: /api/accounts/* -> k8s-team33-accounts ELB
- * - Deposits: /api/deposits/* -> k8s-team33-accounts ELB
- * - Withdrawals: /api/withdrawals/* -> k8s-team33-accounts ELB
- * - Banks: /api/banks/* -> k8s-team33-accounts ELB
- * - Chat: /api/chat/* -> k8s-team33-accounts ELB
- * - OTP: /api/otp/* -> k8s-team33-accounts ELB
- * - Games: /api/games/* -> api.team33.mx
+ * All API calls go directly to accounts.team33.mx
  */
 
-// API key from environment variable (set in Vercel dashboard or .env file)
+// API key from environment variable
 export const API_KEY = import.meta.env.VITE_API_KEY || '';
 
-// Base URL is empty - all requests use relative URLs that get proxied
-const API_BASE_URL = '';
+// Base URL - call accounts.team33.mx directly
+const API_BASE_URL = 'https://accounts.team33.mx';
 
 // LocalStorage keys
 export const STORAGE_KEYS = {

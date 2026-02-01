@@ -4,6 +4,9 @@
  * Backend endpoints are now public (no auth required)
  */
 
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
+
 // LocalStorage keys for withdrawals (no API yet)
 const PENDING_TRANSACTIONS_KEY = 'admin_pending_transactions';
 const ALL_TRANSACTIONS_KEY = 'admin_all_transactions';
@@ -67,7 +70,7 @@ const lookupUserInfo = async (accountId) => {
   // Try API lookup
   try {
     const headers = getHeaders();
-    const response = await fetch(`/api/accounts/${accountId}`, { headers });
+    const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, { headers });
     if (response.ok) {
       const account = await response.json();
       const userInfo = {
@@ -136,20 +139,20 @@ export const transactionService = {
 
       // Fetch deposits from API based on status filter
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
-        const response = await fetch(`/api/admin/deposits/status/COMPLETED`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/deposits/status/COMPLETED`, { headers });
         if (response.ok) apiDeposits = await response.json();
       } else if (filters.status === 'REJECTED') {
-        const response = await fetch(`/api/admin/deposits/status/REJECTED`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/deposits/status/REJECTED`, { headers });
         if (response.ok) apiDeposits = await response.json();
       } else if (filters.status === 'ALL' || !filters.status) {
         const [pending, completed, rejected] = await Promise.all([
-          fetch(`/api/admin/deposits/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/deposits/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/deposits/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`${API_BASE}/api/admin/deposits/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/api/admin/deposits/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/api/admin/deposits/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         apiDeposits = [...pending, ...completed, ...rejected];
       } else {
-        const response = await fetch(`/api/admin/deposits/pending`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/deposits/pending`, { headers });
         if (response.ok) apiDeposits = await response.json();
       }
 
@@ -183,20 +186,20 @@ export const transactionService = {
       const headers = getHeaders();
 
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
-        const response = await fetch(`/api/admin/withdrawals/status/COMPLETED`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'REJECTED') {
-        const response = await fetch(`/api/admin/withdrawals/status/REJECTED`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'ALL' || !filters.status) {
         const [pending, completed, rejected] = await Promise.all([
-          fetch(`/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         apiWithdrawals = [...pending, ...completed, ...rejected];
       } else {
-        const response = await fetch(`/api/admin/withdrawals/pending`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       }
 
@@ -300,7 +303,7 @@ export const transactionService = {
   async getStats() {
     try {
       const headers = getHeaders();
-      const response = await fetch(`/api/admin/deposits/stats`, { headers });
+      const response = await fetch(`${API_BASE}/api/admin/deposits/stats`, { headers });
 
       if (response.ok) {
         const stats = await response.json();
@@ -331,7 +334,7 @@ export const transactionService = {
     // Check if it's a deposit (starts with DEP)
     if (transactionId.startsWith('DEP')) {
       try {
-        const response = await fetch(`/api/admin/deposits/${transactionId}/approve`, {
+        const response = await fetch(`${API_BASE}/api/admin/deposits/${transactionId}/approve`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -372,7 +375,7 @@ export const transactionService = {
           apiId = transactionId.replace(/^WD/, '');
         }
 
-        const response = await fetch(`/api/admin/withdrawals/${apiId}/approve`, {
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}/approve`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -417,7 +420,7 @@ export const transactionService = {
     // Check if it's a deposit
     if (transactionId.startsWith('DEP')) {
       try {
-        const response = await fetch(`/api/admin/deposits/${transactionId}/reject`, {
+        const response = await fetch(`${API_BASE}/api/admin/deposits/${transactionId}/reject`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -450,7 +453,7 @@ export const transactionService = {
         if (apiId.startsWith('WD') && !originalId) {
           apiId = transactionId.replace(/^WD/, '');
         }
-        const response = await fetch(`/api/admin/withdrawals/${apiId}/reject`, {
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}/reject`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -485,7 +488,7 @@ export const transactionService = {
   async getDeposit(depositId) {
     try {
       const headers = getHeaders();
-      const response = await fetch(`/api/admin/deposits/${depositId}`, { headers });
+      const response = await fetch(`${API_BASE}/api/admin/deposits/${depositId}`, { headers });
 
       if (response.ok) {
         const deposit = await response.json();
@@ -515,7 +518,7 @@ export const transactionService = {
   async getDepositsByAccount(accountId) {
     try {
       const headers = getHeaders();
-      const response = await fetch(`/api/admin/deposits/account/${accountId}`, { headers });
+      const response = await fetch(`${API_BASE}/api/admin/deposits/account/${accountId}`, { headers });
 
       if (response.ok) {
         const deposits = await response.json();

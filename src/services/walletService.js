@@ -1,6 +1,8 @@
-// Wallet Service - Wallet management via external API with localStorage fallback
-// API calls use relative URLs which are proxied by Vite (dev) or Vercel serverless functions (prod)
+// Wallet Service - Wallet management via external API
 import { API_KEY } from './api';
+
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
 
 const LOCAL_WALLETS_KEY = 'team33_local_wallets';
 const PENDING_TRANSACTIONS_KEY = 'team33_pending_transactions';
@@ -87,7 +89,7 @@ export const walletService = {
     }
 
     try {
-      const response = await fetch(`/api/wallets/${accountId}`, {
+      const response = await fetch(`${API_BASE}/api/wallets/${accountId}`, {
         method: 'POST',
         headers,
       });
@@ -118,7 +120,7 @@ export const walletService = {
   // Get wallet by account ID
   async getWallet(accountId) {
     try {
-      const response = await fetch(`/api/wallets/account/${accountId}`, {
+      const response = await fetch(`${API_BASE}/api/wallets/account/${accountId}`, {
         method: 'GET',
         headers,
       });
@@ -162,7 +164,7 @@ export const walletService = {
 
     // Try backend API first - this is the source of truth
     try {
-      const response = await fetch(`/api/accounts/${accountId}/balance`, {
+      const response = await fetch(`${API_BASE}/api/accounts/${accountId}/balance`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -309,7 +311,7 @@ export const walletService = {
     }
 
     try {
-      const response = await fetch(`/api/wallets/account/${accountId}/deposit`, {
+      const response = await fetch(`${API_BASE}/api/wallets/account/${accountId}/deposit`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -400,7 +402,7 @@ export const walletService = {
     }
 
     try {
-      const response = await fetch(`/api/wallets/account/${accountId}/withdraw`, {
+      const response = await fetch(`${API_BASE}/api/wallets/account/${accountId}/withdraw`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -475,7 +477,7 @@ export const walletService = {
       // Fetch deposits if type is 'all' or 'deposit'
       if (!type || type === 'all' || type === 'deposit') {
         fetchPromises.push(
-          fetch(`/api/deposits/account/${accountId}`, {
+          fetch(`${API_BASE}/api/deposits/account/${accountId}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
           }).then(async res => {
@@ -505,7 +507,7 @@ export const walletService = {
       // Fetch withdrawals if type is 'all' or 'withdraw'
       if (!type || type === 'all' || type === 'withdraw') {
         fetchPromises.push(
-          fetch(`/api/withdrawals/account/${accountId}`, {
+          fetch(`${API_BASE}/api/withdrawals/account/${accountId}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' },
           }).then(async res => {
@@ -1025,7 +1027,7 @@ export const walletService = {
 
     try {
       // Step 1: Initiate deposit via API (use relative URL for Vercel proxy)
-      const initiateResponse = await fetch(`/api/deposits/initiate`, {
+      const initiateResponse = await fetch(`${API_BASE}/api/deposits/initiate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1043,7 +1045,7 @@ export const walletService = {
       const depositId = initiateData.depositId;
 
       // Step 2: Verify deposit to move to PENDING_REVIEW
-      const verifyResponse = await fetch(`/api/deposits/verify`, {
+      const verifyResponse = await fetch(`${API_BASE}/api/deposits/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ depositId })

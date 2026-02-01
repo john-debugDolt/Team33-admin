@@ -1,5 +1,8 @@
 // Bank Service - Fetch bank details for deposits with rotation logic
 
+// API base - call accounts.team33.mx directly
+const API_BASE = 'https://accounts.team33.mx';
+
 const ROTATION_THRESHOLD = 3; // Switch bank after 3 deposits
 const ROTATION_KEY = 'team33_bank_rotation';
 
@@ -118,7 +121,7 @@ export const bankService = {
   // Get a specific bank by ID
   async getBankById(bankId) {
     try {
-      const response = await fetch(`/api/banks/${bankId}`, {
+      const response = await fetch(`${API_BASE}/api/banks/${bankId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

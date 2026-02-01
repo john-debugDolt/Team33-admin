@@ -1,7 +1,8 @@
 // OTP Service - Phone verification via SMS
 import { API_KEY } from './api';
 
-const OTP_API_BASE = '/api/otp';
+// API base - call accounts.team33.mx directly
+const OTP_API_BASE = 'https://accounts.team33.mx/api/otp';
 
 // Dev bypass - use code "000000" to skip OTP
 const DEV_BYPASS_CODE = '000000';
