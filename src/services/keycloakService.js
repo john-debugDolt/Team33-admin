@@ -14,10 +14,9 @@ const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'Team33Casino';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'Team33admin';
 const KEYCLOAK_CLIENT_SECRET = import.meta.env.VITE_KEYCLOAK_CLIENT_SECRET || '';
 
-// Use serverless function for token endpoint in production
-// This bypasses Vercel's HTTP proxy limitation
+// Use proxy path for token endpoint
 const KEYCLOAK_URL = '/auth/keycloak';
-const TOKEN_ENDPOINT = '/api/auth/token'; // Serverless function
+const TOKEN_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
 
 // Mock user for bypassed auth
 const MOCK_USER = {
@@ -39,7 +38,7 @@ const ADMIN_REFRESH_TOKEN_KEY = 'team33_admin_refresh_token';
 const ADMIN_USER_KEY = 'team33_admin_user';
 const TOKEN_EXPIRY_KEY = 'team33_admin_token_expiry';
 
-// Token endpoint - use serverless function
+// Token endpoint - uses proxy rewrite
 const getTokenEndpoint = () => TOKEN_ENDPOINT;
 
 // Parse JWT token to extract payload
