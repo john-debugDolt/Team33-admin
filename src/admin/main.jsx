@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { TranslationProvider } from '../context/TranslationContext'
+import ProtectedRoute from '../components/ProtectedRoute'
 import AdminLayout from './AdminLayout'
 import Login from './pages/Login'
 import Users from './pages/Users'
@@ -44,8 +45,15 @@ createRoot(document.getElementById('root')).render(
     <TranslationProvider>
       <Router>
         <Routes>
+          {/* Public route - Login page */}
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<AdminLayout />}>
+
+          {/* Protected routes - Require authentication */}
+          <Route path="/" element={
+            <ProtectedRoute>
+              <AdminLayout />
+            </ProtectedRoute>
+          }>
             <Route index element={<Navigate to="/users" replace />} />
             <Route path="users" element={<Users />} />
             <Route path="members" element={<Members />} />

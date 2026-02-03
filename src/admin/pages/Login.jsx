@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { keycloakService } from '../../services/keycloakService';
 
 const Login = () => {
@@ -8,6 +8,25 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Get the redirect path from location state (set by ProtectedRoute)
+  const from = location.state?.from?.pathname || '/users';
+
+  // Check for error message passed from ProtectedRoute
+  useEffect(() => {
+    if (location.state?.error) {
+      setError(location.state.error);
+    }
+
+    // If user is already authenticated, redirect to intended page
+    if (keycloakService.isAuthenticated()) {
+      const user = keycloakService.getCurrentUser();
+      if (user?.isAdmin || user?.isStaff) {
+        navigate(from, { replace: true });
+      }
+    }
+  }, [location.state, navigate, from]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -20,7 +39,8 @@ const Login = () => {
       if (result.success) {
         // Check if user has admin or staff role
         if (result.user.isAdmin || result.user.isStaff) {
-          navigate('/users');
+          // Redirect to the originally requested page or default to /users
+          navigate(from, { replace: true });
         } else {
           setError('Access denied. Admin or Staff role required.');
           keycloakService.logout();

@@ -5,8 +5,8 @@
  * NOTE: Authentication is currently BYPASSED for development
  */
 
-// BYPASS AUTH - Backend removed Keycloak, all endpoints are now public
-const BYPASS_AUTH = true;
+// BYPASS AUTH - Set to false to enable real Keycloak authentication
+const BYPASS_AUTH = false;
 
 // Keycloak configuration - direct URL (Amplify can't proxy to external servers)
 const KEYCLOAK_URL = 'https://k8s-team33-keycloak-320152ed2f-65380cdab2265c8a.elb.ap-southeast-2.amazonaws.com';

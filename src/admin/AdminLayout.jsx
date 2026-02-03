@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useLocation } from 'react-router-dom';
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../context/TranslationContext';
+import { keycloakService } from '../services/keycloakService';
 import {
   FiMessageSquare,
   FiRepeat,
@@ -31,14 +32,25 @@ import {
   FiCode,
   FiPackage,
   FiFileText,
-  FiKey
+  FiKey,
+  FiLogOut
 } from 'react-icons/fi';
 
 const AdminLayout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const { t, currentLanguage, languages, changeLanguage } = useTranslation();
+
+  // Get current user from Keycloak service
+  const currentUser = keycloakService.getCurrentUser();
+
+  // Handle logout - clears tokens and redirects to login
+  const handleLogout = () => {
+    keycloakService.logout();
+    navigate('/login');
+  };
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -171,6 +183,14 @@ const AdminLayout = () => {
         </div>
 
         <div className="sidebar-top-section">
+          {/* User info display */}
+          <div className="sidebar-user-info">
+            <FiUser size={18} />
+            <span className="sidebar-username">{currentUser?.username || 'Admin'}</span>
+            {currentUser?.isAdmin && <span className="sidebar-role-badge">Admin</span>}
+            {currentUser?.isStaff && !currentUser?.isAdmin && <span className="sidebar-role-badge staff">Staff</span>}
+          </div>
+
           <select value={currentLanguage} onChange={handleLanguageChange} className="sidebar-select">
             {languages.map(lang => (
               <option key={lang.code} value={lang.code}>
@@ -181,6 +201,12 @@ const AdminLayout = () => {
           <div className="sidebar-time">
             System: +08:00 Device: +11:00
           </div>
+
+          {/* Logout button */}
+          <button onClick={handleLogout} className="sidebar-logout-btn">
+            <FiLogOut size={18} />
+            <span>Logout</span>
+          </button>
         </div>
 
         <div className="sidebar-menu-section">
