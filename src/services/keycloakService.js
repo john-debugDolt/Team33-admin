@@ -2,21 +2,29 @@
  * Keycloak Authentication Service
  * Handles admin/staff authentication via Keycloak OAuth2
  *
- * NOTE: Authentication is currently BYPASSED for development
+ * Authentication Flow:
+ * 1. If USE_BACKEND_PROXY is true, auth requests go through api.team33.mx
+ * 2. Otherwise, direct calls to Keycloak (requires HTTPS or same-origin)
  */
 
-// BYPASS AUTH - Set to false to enable real Keycloak authentication
+// BYPASS AUTH - Set to true to skip authentication (development only)
 const BYPASS_AUTH = false;
 
-// Keycloak configuration - direct URL (Amplify can't proxy to external servers)
-// Using HTTP as Keycloak server doesn't have SSL configured
-const KEYCLOAK_URL = 'http://k8s-team33-keycloak-320152ed2f-65380cdab2265c8a.elb.ap-southeast-2.amazonaws.com';
+// Use backend proxy for auth - Set to false since Keycloak now has HTTPS
+const USE_BACKEND_PROXY = false;
+
+// API Base URL (HTTPS) - for API calls
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.team33.mx';
+
+// Keycloak URL (HTTPS)
+const KEYCLOAK_URL = import.meta.env.VITE_KEYCLOAK_URL || 'https://keclok.team33.mx';
 const KEYCLOAK_REALM = import.meta.env.VITE_KEYCLOAK_REALM || 'Team33Casino';
 const KEYCLOAK_CLIENT_ID = import.meta.env.VITE_KEYCLOAK_CLIENT_ID || 'Team33admin';
 const KEYCLOAK_CLIENT_SECRET = import.meta.env.VITE_KEYCLOAK_CLIENT_SECRET || '';
 
-// Token endpoint - call Keycloak directly (Amplify can't proxy to external servers)
-const TOKEN_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
+// Token endpoints
+const KEYCLOAK_TOKEN_ENDPOINT = `${KEYCLOAK_URL}/realms/${KEYCLOAK_REALM}/protocol/openid-connect/token`;
+const PROXY_TOKEN_ENDPOINT = `${API_BASE_URL}/api/auth/token`;
 
 // Mock user for bypassed auth
 const MOCK_USER = {
@@ -38,8 +46,8 @@ const ADMIN_REFRESH_TOKEN_KEY = 'team33_admin_refresh_token';
 const ADMIN_USER_KEY = 'team33_admin_user';
 const TOKEN_EXPIRY_KEY = 'team33_admin_token_expiry';
 
-// Token endpoint - uses proxy rewrite
-const getTokenEndpoint = () => TOKEN_ENDPOINT;
+// Get token endpoint based on configuration
+const getTokenEndpoint = () => USE_BACKEND_PROXY ? PROXY_TOKEN_ENDPOINT : KEYCLOAK_TOKEN_ENDPOINT;
 
 // Parse JWT token to extract payload
 const parseJwt = (token) => {
@@ -85,36 +93,56 @@ class KeycloakService {
 
   /**
    * Login with username and password (Resource Owner Password Grant)
+   * Uses backend proxy when USE_BACKEND_PROXY is true to avoid mixed content issues
    */
   async login(username, password) {
-    // BYPASS: Always succeed
+    // BYPASS: Always succeed (development only)
     if (BYPASS_AUTH) {
       console.log('[Keycloak] Auth bypassed - logging in as mock admin');
       localStorage.setItem(ADMIN_TOKEN_KEY, MOCK_TOKEN);
       localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(MOCK_USER));
-      localStorage.setItem(TOKEN_EXPIRY_KEY, (Date.now() + 86400000).toString()); // 24 hours
+      localStorage.setItem(TOKEN_EXPIRY_KEY, (Date.now() + 86400000).toString());
       return { success: true, user: MOCK_USER, accessToken: MOCK_TOKEN };
     }
 
     const tokenEndpoint = getTokenEndpoint();
     console.log('[Keycloak] Attempting login to:', tokenEndpoint);
-    console.log('[Keycloak] Client ID:', KEYCLOAK_CLIENT_ID);
-    console.log('[Keycloak] Realm:', KEYCLOAK_REALM);
+    console.log('[Keycloak] Using backend proxy:', USE_BACKEND_PROXY);
 
     try {
-      const response = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'password',
-          client_id: KEYCLOAK_CLIENT_ID,
-          client_secret: KEYCLOAK_CLIENT_SECRET,
-          username,
-          password,
-        }),
-      });
+      let response;
+
+      if (USE_BACKEND_PROXY) {
+        // Use backend proxy endpoint (JSON body)
+        // Backend will forward to Keycloak and return the token
+        response = await fetch(tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username,
+            password,
+            grant_type: 'password',
+            client_id: KEYCLOAK_CLIENT_ID,
+          }),
+        });
+      } else {
+        // Direct call to Keycloak (x-www-form-urlencoded)
+        response = await fetch(tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            grant_type: 'password',
+            client_id: KEYCLOAK_CLIENT_ID,
+            client_secret: KEYCLOAK_CLIENT_SECRET,
+            username,
+            password,
+          }),
+        });
+      }
 
       console.log('[Keycloak] Response status:', response.status);
 
@@ -124,7 +152,7 @@ class KeycloakService {
       if (!response.ok) {
         return {
           success: false,
-          error: data.error_description || data.error || 'Login failed',
+          error: data.error_description || data.error || data.message || 'Login failed',
         };
       }
 
@@ -138,8 +166,8 @@ class KeycloakService {
       // Store user info
       localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
 
-      // Setup auto-refresh
-      this.setupTokenRefresh(data.expires_in);
+      // Setup auto-refresh (token expires in 5 minutes = 300 seconds)
+      this.setupTokenRefresh(data.expires_in || 300);
 
       return {
         success: true,
@@ -194,6 +222,7 @@ class KeycloakService {
 
   /**
    * Refresh the access token using refresh token
+   * Uses backend proxy when USE_BACKEND_PROXY is true
    */
   async refreshToken() {
     const refreshToken = this.getRefreshToken();
@@ -202,18 +231,36 @@ class KeycloakService {
     }
 
     try {
-      const response = await fetch(getTokenEndpoint(), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          grant_type: 'refresh_token',
-          client_id: KEYCLOAK_CLIENT_ID,
-          client_secret: KEYCLOAK_CLIENT_SECRET,
-          refresh_token: refreshToken,
-        }),
-      });
+      let response;
+
+      if (USE_BACKEND_PROXY) {
+        // Use backend proxy for token refresh
+        response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            refresh_token: refreshToken,
+            grant_type: 'refresh_token',
+            client_id: KEYCLOAK_CLIENT_ID,
+          }),
+        });
+      } else {
+        // Direct call to Keycloak
+        response = await fetch(getTokenEndpoint(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            client_id: KEYCLOAK_CLIENT_ID,
+            client_secret: KEYCLOAK_CLIENT_SECRET,
+            refresh_token: refreshToken,
+          }),
+        });
+      }
 
       const data = await response.json();
 
