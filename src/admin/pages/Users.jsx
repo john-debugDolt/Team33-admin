@@ -4,9 +4,7 @@ import { FiSearch, FiMessageSquare, FiCreditCard, FiRefreshCw, FiX, FiUser, FiPh
 import { formatDateTime } from '../utils/dateUtils';
 import { keycloakService } from '../../services/keycloakService';
 import { adminApiService } from '../../services/adminApiService';
-
-// API base - call accounts.team33.mx directly
-const API_BASE = 'https://accounts.team33.mx';
+import { getWallet, getDepositsForAccount, getWithdrawalsForAccount } from '../../services/apiService';
 
 const Users = () => {
   const navigate = useNavigate();
@@ -69,53 +67,57 @@ const Users = () => {
         const usersArray = Array.isArray(data) ? data : (data.accounts || data.users || data.data || []);
 
         // Transform API data to our format
-        const transformedUsers = await Promise.all(usersArray.map(async (user) => {
-          // Try to fetch real wallet balance for this user
-          let realBalance = user.balance || 0;
-          try {
-            const walletRes = await fetch(`${API_BASE}/api/wallets/account/${user.accountId}`);
-            if (walletRes.ok) {
-              const walletData = await walletRes.json();
-              if (Array.isArray(walletData) && walletData.length > 0) {
-                realBalance = walletData[0].balance || 0;
-              } else if (walletData.balance !== undefined) {
-                realBalance = walletData.balance;
-              }
-            }
-          } catch (e) {
-            console.log('Could not fetch wallet for', user.accountId);
-          }
-
-          return {
-            accountId: user.accountId,
-            createdAt: user.createdAt,
-            date: formatDateTime(user.createdAt),
-            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.accountId,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            mobile: user.phoneNumber || '-',
-            email: user.email || '-',
-            bankAccount: user.bankAccount || '-',
-            bank: user.bank || '-',
-            status: user.status || 'ACTIVE',
-            balance: realBalance,
-            depositCount: user.depositCount || 0,
-            depositTotal: user.depositTotal || '0.00',
-            withdrawCount: user.withdrawCount || 0,
-            withdrawTotal: user.withdrawTotal || '0.00',
-          };
+        // First, transform basic user data
+        const transformedUsers = usersArray.map((user) => ({
+          accountId: user.accountId,
+          createdAt: user.createdAt,
+          date: formatDateTime(user.createdAt),
+          name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.accountId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          mobile: user.phoneNumber || '-',
+          email: user.email || '-',
+          bankAccount: user.bankAccount || '-',
+          bank: user.bank || '-',
+          status: user.status || 'ACTIVE',
+          balance: user.balance || 0,
+          depositCount: user.depositCount || 0,
+          depositTotal: user.depositTotal || '0.00',
+          withdrawCount: user.withdrawCount || 0,
+          withdrawTotal: user.withdrawTotal || '0.00',
         }));
 
+        // Fetch wallet balances for all users in parallel (with auth)
+        const usersWithBalances = await Promise.all(
+          transformedUsers.map(async (user) => {
+            try {
+              const walletResult = await getWallet(user.accountId);
+              if (walletResult.success && walletResult.data) {
+                const walletData = walletResult.data;
+                // Handle both array and object responses
+                if (Array.isArray(walletData) && walletData.length > 0) {
+                  user.balance = walletData[0].balance || 0;
+                } else if (walletData.balance !== undefined) {
+                  user.balance = walletData.balance;
+                }
+              }
+            } catch (e) {
+              console.log('Could not fetch wallet for', user.accountId);
+            }
+            return user;
+          })
+        );
+
         // Sort by registration date (newest first)
-        transformedUsers.sort((a, b) => {
+        usersWithBalances.sort((a, b) => {
           const dateA = new Date(a.createdAt || 0);
           const dateB = new Date(b.createdAt || 0);
           return dateB - dateA;
         });
 
-        setUsers(transformedUsers);
-        setFilteredUsers(transformedUsers);
-        localStorage.setItem('admin_users_cache', JSON.stringify(transformedUsers));
+        setUsers(usersWithBalances);
+        setFilteredUsers(usersWithBalances);
+        localStorage.setItem('admin_users_cache', JSON.stringify(usersWithBalances));
       } else {
         setError(result.error || 'Failed to fetch users');
       }
@@ -175,19 +177,27 @@ const Users = () => {
     setUserTransactions([]);
 
     try {
-      const token = await keycloakService.getValidToken();
-      if (!token) {
+      // Check authentication
+      if (!keycloakService.isAuthenticated()) {
         navigate('/login');
         return;
       }
 
-      // Fetch deposits and withdrawals for this user (no auth required)
-      const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/deposits/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${API_BASE}/api/withdrawals/account/${user.accountId}`).then(r => r.ok ? r.json() : []).catch(() => [])
+      // Fetch deposits and withdrawals using authenticated API service
+      const [depositsResult, withdrawalsResult] = await Promise.all([
+        getDepositsForAccount(user.accountId),
+        getWithdrawalsForAccount(user.accountId)
       ]);
 
-      const deposits = (Array.isArray(depositsRes) ? depositsRes : []).map(d => ({
+      // Handle session expiry
+      if (depositsResult.sessionExpired || withdrawalsResult.sessionExpired) {
+        navigate('/login');
+        return;
+      }
+
+      // Process deposits
+      const depositsData = depositsResult.success ? depositsResult.data : [];
+      const deposits = (Array.isArray(depositsData) ? depositsData : []).map(d => ({
         id: d.depositId || d.id,
         type: 'DEPOSIT',
         amount: d.amount,
@@ -195,7 +205,9 @@ const Users = () => {
         date: d.createdAt
       }));
 
-      const withdrawals = (Array.isArray(withdrawalsRes) ? withdrawalsRes : []).map(w => ({
+      // Process withdrawals
+      const withdrawalsData = withdrawalsResult.success ? withdrawalsResult.data : [];
+      const withdrawals = (Array.isArray(withdrawalsData) ? withdrawalsData : []).map(w => ({
         id: w.withdrawId || w.withdrawalId || w.id,
         type: 'WITHDRAWAL',
         amount: w.amount,
