@@ -8,7 +8,9 @@ import {
   getBetHistory,
   getBetHistoryCount,
   getCommissionEarnings,
-  getReferralsByPrincipal
+  getPendingCommissionTotal,
+  getReferralsByPrincipal,
+  getReferralByReferred
 } from '../../services/apiService';
 
 /**
@@ -28,6 +30,10 @@ const UserDetailsModal = ({ user, onClose }) => {
   const [betHistoryTotal, setBetHistoryTotal] = useState(0);
   const [betHistoryPage, setBetHistoryPage] = useState(0);
   const [commissions, setCommissions] = useState([]);
+  const [pendingCommissionTotal, setPendingCommissionTotal] = useState(0);
+  const [referrals, setReferrals] = useState([]);
+  const [referredBy, setReferredBy] = useState(null);
+  const [commissionFilter, setCommissionFilter] = useState({ status: '', type: '' });
   const [copied, setCopied] = useState(false);
 
   // Pagination settings
@@ -142,9 +148,25 @@ const UserDetailsModal = ({ user, onClose }) => {
             break;
 
           case 'COMMISSION':
-            const commResult = await getCommissionEarnings(user.accountId);
+            // Fetch commission earnings, pending total, referrals, and referrer
+            const [commResult, pendingResult, referralsResult, referredByResult] = await Promise.all([
+              getCommissionEarnings(user.accountId, commissionFilter),
+              getPendingCommissionTotal(user.accountId),
+              getReferralsByPrincipal(user.accountId),
+              getReferralByReferred(user.accountId)
+            ]);
+
             if (commResult.success) {
               setCommissions(Array.isArray(commResult.data) ? commResult.data : []);
+            }
+            if (pendingResult.success) {
+              setPendingCommissionTotal(pendingResult.data?.pendingTotal || 0);
+            }
+            if (referralsResult.success) {
+              setReferrals(Array.isArray(referralsResult.data) ? referralsResult.data : []);
+            }
+            if (referredByResult.success && referredByResult.data) {
+              setReferredBy(referredByResult.data);
             }
             break;
 
@@ -309,25 +331,29 @@ const UserDetailsModal = ({ user, onClose }) => {
                       <th>Date</th>
                       <th>Round ID</th>
                       <th>Game</th>
-                      <th>Provider</th>
-                      <th>Bet Amount</th>
-                      <th>Win Amount</th>
-                      <th>Profit/Loss</th>
+                      <th>Bet</th>
+                      <th>Win</th>
+                      <th>Balance After</th>
+                      <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {betHistory.map((bet, idx) => {
                       const profit = (bet.winAmount || 0) - (bet.betAmount || 0);
                       return (
-                        <tr key={bet.roundId || bet.betId || idx}>
-                          <td>{formatDateTime(bet.createdAt || bet.timestamp)}</td>
-                          <td className="mono small">{(bet.roundId || '-').substring(0, 12)}...</td>
-                          <td>{bet.gameName || bet.gameCode || '-'}</td>
-                          <td>{bet.provider || bet.gameProvider || '-'}</td>
-                          <td>${parseFloat(bet.betAmount || bet.stake || 0).toFixed(2)}</td>
-                          <td className="text-success">${parseFloat(bet.winAmount || bet.payout || 0).toFixed(2)}</td>
-                          <td className={profit >= 0 ? 'text-success' : 'text-danger'}>
-                            {profit >= 0 ? '+' : ''}${profit.toFixed(2)}
+                        <tr key={bet.roundId || bet.id || idx}>
+                          <td>{formatDateTime(bet.createdAt)}</td>
+                          <td className="mono small" title={bet.roundId}>{(bet.roundId || '-').substring(0, 12)}...</td>
+                          <td>{bet.gameSlug || '-'}</td>
+                          <td>${parseFloat(bet.betAmount || 0).toFixed(2)}</td>
+                          <td className={bet.winAmount > 0 ? 'text-success' : ''}>
+                            ${parseFloat(bet.winAmount || 0).toFixed(2)}
+                          </td>
+                          <td>${parseFloat(bet.balanceAfter || 0).toFixed(2)}</td>
+                          <td>
+                            <span className={`status-badge ${bet.status?.toLowerCase()}`}>
+                              {bet.status || 'SETTLED'}
+                            </span>
                           </td>
                         </tr>
                       );
@@ -365,34 +391,122 @@ const UserDetailsModal = ({ user, onClose }) => {
       case 'COMMISSION':
         return (
           <div className="commission-section">
-            {commissions.length === 0 ? (
-              <div className="empty-state">No commission records found</div>
-            ) : (
-              <table className="data-table compact">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {commissions.map((comm, idx) => (
-                    <tr key={comm.commissionId || idx}>
-                      <td>{formatDateTime(comm.createdAt)}</td>
-                      <td>{comm.type || 'BET'}</td>
-                      <td className="text-success">+${parseFloat(comm.amount || 0).toFixed(2)}</td>
-                      <td>
-                        <span className={`status-badge ${comm.status?.toLowerCase()}`}>
-                          {comm.status}
-                        </span>
-                      </td>
+            {/* Summary Cards */}
+            <div className="commission-summary">
+              <div className="summary-card pending">
+                <label>Pending Commission</label>
+                <span className="amount">${pendingCommissionTotal.toFixed(2)}</span>
+              </div>
+              <div className="summary-card referrals">
+                <label>Total Referrals</label>
+                <span className="count">{referrals.length}</span>
+              </div>
+              {referredBy && (
+                <div className="summary-card referred-by">
+                  <label>Referred By</label>
+                  <span className="referrer-id">{referredBy.principalAccountId?.substring(0, 15)}...</span>
+                </div>
+              )}
+            </div>
+
+            {/* Filter Controls */}
+            <div className="commission-filters">
+              <select
+                value={commissionFilter.status}
+                onChange={(e) => setCommissionFilter({ ...commissionFilter, status: e.target.value })}
+                className="filter-select"
+              >
+                <option value="">All Status</option>
+                <option value="PENDING">Pending</option>
+                <option value="CREDITED">Credited</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+              <select
+                value={commissionFilter.type}
+                onChange={(e) => setCommissionFilter({ ...commissionFilter, type: e.target.value })}
+                className="filter-select"
+              >
+                <option value="">All Types</option>
+                <option value="DEPOSIT">Deposit</option>
+                <option value="PLAY">Play/Bet</option>
+              </select>
+            </div>
+
+            {/* Referrals Section */}
+            {referrals.length > 0 && (
+              <div className="referrals-section">
+                <h4>Referred Players ({referrals.length})</h4>
+                <table className="data-table compact">
+                  <thead>
+                    <tr>
+                      <th>Referred Account</th>
+                      <th>Code</th>
+                      <th>Deposit Rate</th>
+                      <th>Play Rate</th>
+                      <th>Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {referrals.map((ref, idx) => (
+                      <tr key={ref.id || idx}>
+                        <td className="mono small">{ref.referredAccountId?.substring(0, 15)}...</td>
+                        <td>{ref.referralCode || '-'}</td>
+                        <td>{((ref.depositCommissionRate || 0) * 100).toFixed(1)}%</td>
+                        <td>{((ref.playCommissionRate || 0) * 100).toFixed(1)}%</td>
+                        <td>
+                          <span className={`status-badge ${ref.isActive ? 'active' : 'inactive'}`}>
+                            {ref.isActive ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
+
+            {/* Commission Earnings */}
+            <div className="earnings-section">
+              <h4>Commission Earnings ({commissions.length})</h4>
+              {commissions.length === 0 ? (
+                <div className="empty-state">No commission earnings found</div>
+              ) : (
+                <table className="data-table compact">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Referred Account</th>
+                      <th>Source Amount</th>
+                      <th>Rate</th>
+                      <th>Commission</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {commissions.map((comm, idx) => (
+                      <tr key={comm.id || idx}>
+                        <td>{formatDateTime(comm.createdAt)}</td>
+                        <td>
+                          <span className={`type-badge ${comm.commissionType?.toLowerCase()}`}>
+                            {comm.commissionType || 'PLAY'}
+                          </span>
+                        </td>
+                        <td className="mono small">{comm.referredAccountId?.substring(0, 12)}...</td>
+                        <td>${parseFloat(comm.sourceAmount || 0).toFixed(2)}</td>
+                        <td>{((comm.commissionRate || 0) * 100).toFixed(1)}%</td>
+                        <td className="text-success">+${parseFloat(comm.commissionAmount || 0).toFixed(2)}</td>
+                        <td>
+                          <span className={`status-badge ${comm.status?.toLowerCase()}`}>
+                            {comm.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         );
 
@@ -777,6 +891,118 @@ const UserDetailsModal = ({ user, onClose }) => {
         .type-badge.withdrawal {
           background: #fed7aa;
           color: #9a3412;
+        }
+
+        .type-badge.deposit {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .type-badge.play {
+          background: #e0e7ff;
+          color: #3730a3;
+        }
+
+        .status-badge.settled {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .status-badge.open {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .status-badge.cancelled {
+          background: #fee2e2;
+          color: #991b1b;
+        }
+
+        /* Commission Section Styles */
+        .commission-section {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .commission-summary {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 16px;
+        }
+
+        .summary-card {
+          padding: 20px;
+          border-radius: 10px;
+          text-align: center;
+        }
+
+        .summary-card label {
+          display: block;
+          font-size: 12px;
+          color: #6b7280;
+          margin-bottom: 8px;
+          text-transform: uppercase;
+        }
+
+        .summary-card.pending {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        }
+
+        .summary-card.pending .amount {
+          font-size: 28px;
+          font-weight: 700;
+          color: #92400e;
+        }
+
+        .summary-card.referrals {
+          background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%);
+        }
+
+        .summary-card.referrals .count {
+          font-size: 28px;
+          font-weight: 700;
+          color: #3730a3;
+        }
+
+        .summary-card.referred-by {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+        }
+
+        .summary-card.referred-by .referrer-id {
+          font-size: 14px;
+          font-weight: 600;
+          color: #166534;
+          font-family: 'Monaco', 'Consolas', monospace;
+        }
+
+        .commission-filters {
+          display: flex;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .filter-select {
+          padding: 8px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          font-size: 13px;
+          background: #fff;
+          min-width: 140px;
+        }
+
+        .referrals-section,
+        .earnings-section {
+          background: #f9fafb;
+          padding: 16px;
+          border-radius: 8px;
+        }
+
+        .referrals-section h4,
+        .earnings-section h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          color: #374151;
         }
 
         .wallet-section {

@@ -326,74 +326,104 @@ export const updateWalletBalance = (accountId, amount, type, reason) =>
   });
 
 // ============================================
-// COMMISSION & REFERRAL MANAGEMENT (ADMIN only)
+// COMMISSION & REFERRAL MANAGEMENT
+// Via Admin-Service: /api/admin/commissions (requires JWT)
+// Direct: /api/wallets/commissions
 // ============================================
 
 /**
- * Create a referral
- * @param {string} principalAccountId - Principal (referrer) account ID
- * @param {string} referredAccountId - Referred account ID
- * @param {number} commissionRate - Commission rate (e.g., 0.05 for 5%)
+ * Create a referral relationship
+ * POST /api/wallets/commissions/referrals
+ *
+ * @param {Object} referralData - Referral configuration
+ * @param {string} referralData.principalAccountId - Referrer's account ID
+ * @param {string} referralData.referredAccountId - Referred player's account ID
+ * @param {string} referralData.referralCode - Optional tracking code
+ * @param {number} referralData.depositCommissionRate - Rate for deposit commission (0.0-1.0)
+ * @param {number} referralData.depositCommissionMaxCount - Max deposits eligible for commission
+ * @param {number} referralData.playCommissionRate - Rate for play/bet commission (0.0-1.0)
+ * @param {string} referralData.playCommissionUntil - End date for play commission (null = forever)
  */
-export const createReferral = (principalAccountId, referredAccountId, commissionRate) =>
-  apiRequest('/api/admin/commissions/referrals', {
+export const createReferral = (referralData) =>
+  apiRequest('/api/wallets/commissions/referrals', {
     method: 'POST',
-    body: JSON.stringify({ principalAccountId, referredAccountId, commissionRate }),
+    body: JSON.stringify(referralData),
   });
 
 /**
  * Update referral configuration
+ * PUT /api/wallets/commissions/referrals/{referralId}
+ *
  * @param {string} referralId - Referral ID
  * @param {Object} config - Updated configuration
+ * @param {number} config.depositCommissionRate - Rate for deposit commission
+ * @param {number} config.depositCommissionMaxCount - Max deposits for commission
+ * @param {number} config.playCommissionRate - Rate for play commission
+ * @param {string} config.playCommissionUntil - End date for play commission
+ * @param {boolean} config.isActive - Whether referral is active
  */
 export const updateReferral = (referralId, config) =>
-  apiRequest(`/api/admin/commissions/referrals/${referralId}`, {
+  apiRequest(`/api/wallets/commissions/referrals/${referralId}`, {
     method: 'PUT',
     body: JSON.stringify(config),
   });
 
 /**
- * Get referrals by principal account
- * @param {string} accountId - Principal account ID
+ * Get all players referred by this account (referrer's referrals)
+ * GET /api/wallets/commissions/referrals/principal/{accountId}
+ *
+ * @param {string} accountId - Principal (referrer) account ID
+ * @returns {Promise<Object>} - Array of Referral objects
  */
 export const getReferralsByPrincipal = (accountId) =>
-  apiRequest(`/api/admin/commissions/referrals/principal/${accountId}`);
+  apiRequest(`/api/wallets/commissions/referrals/principal/${accountId}`);
 
 /**
- * Get referral by referred account
+ * Get who referred this account
+ * GET /api/wallets/commissions/referrals/referred/{accountId}
+ *
  * @param {string} accountId - Referred account ID
+ * @returns {Promise<Object>} - Single Referral object
  */
 export const getReferralByReferred = (accountId) =>
-  apiRequest(`/api/admin/commissions/referrals/referred/${accountId}`);
+  apiRequest(`/api/wallets/commissions/referrals/referred/${accountId}`);
 
 /**
- * Get commission earnings
+ * Get commission earnings for an account
+ * GET /api/wallets/commissions/earnings/{principalAccountId}
+ *
  * @param {string} principalAccountId - Principal account ID
  * @param {Object} params - Query parameters
- * @param {string} params.status - Filter by status: PENDING, CREDITED
- * @param {string} params.type - Filter by type: BET
+ * @param {string} params.status - Filter by status: PENDING, CREDITED, CANCELLED
+ * @param {string} params.type - Filter by type: DEPOSIT or PLAY
+ * @returns {Promise<Object>} - Array of CommissionEarning objects
  */
 export const getCommissionEarnings = (principalAccountId, params = {}) => {
   const queryParams = new URLSearchParams(params).toString();
-  const endpoint = `/api/admin/commissions/earnings/${principalAccountId}${queryParams ? `?${queryParams}` : ''}`;
+  const endpoint = `/api/wallets/commissions/earnings/${principalAccountId}${queryParams ? `?${queryParams}` : ''}`;
   return apiRequest(endpoint);
 };
 
 /**
- * Get pending commission total
+ * Get pending commission total for an account
+ * GET /api/wallets/commissions/earnings/{principalAccountId}/pending-total
+ *
  * @param {string} principalAccountId - Principal account ID
+ * @returns {Promise<Object>} - { pendingTotal: number }
  */
 export const getPendingCommissionTotal = (principalAccountId) =>
-  apiRequest(`/api/admin/commissions/earnings/${principalAccountId}/pending-total`);
+  apiRequest(`/api/wallets/commissions/earnings/${principalAccountId}/pending-total`);
 
 /**
- * Credit pending commissions
+ * Credit all pending commissions to the principal's wallet
+ * POST /api/wallets/commissions/earnings/{principalAccountId}/credit
+ *
  * @param {string} principalAccountId - Principal account ID
+ * @returns {Promise<Object>} - Transaction object for the credit
  */
 export const creditPendingCommissions = (principalAccountId) =>
-  apiRequest(`/api/admin/commissions/earnings/${principalAccountId}/credit`, {
+  apiRequest(`/api/wallets/commissions/earnings/${principalAccountId}/credit`, {
     method: 'POST',
-    body: JSON.stringify({}),
   });
 
 // ============================================
