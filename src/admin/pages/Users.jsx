@@ -5,6 +5,7 @@ import { formatDateTime } from '../utils/dateUtils';
 import { keycloakService } from '../../services/keycloakService';
 import { adminApiService } from '../../services/adminApiService';
 import { getWallet, getDepositsForAccount, getWithdrawalsForAccount } from '../../services/apiService';
+import UserDetailsModal from '../components/UserDetailsModal';
 
 const Users = () => {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ const Users = () => {
   // Modal states
   const [showUserModal, setShowUserModal] = useState(false);
   const [showTransactionsModal, setShowTransactionsModal] = useState(false);
+  const [showUserDetailsModal, setShowUserDetailsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [userTransactions, setUserTransactions] = useState([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
@@ -163,10 +165,16 @@ const Users = () => {
     setFilteredUsers(users);
   };
 
-  // View user details
+  // View user details (simple modal)
   const handleViewUser = (user) => {
     setSelectedUser(user);
     setShowUserModal(true);
+  };
+
+  // View full user details (new comprehensive modal)
+  const handleViewUserDetails = (user) => {
+    setSelectedUser(user);
+    setShowUserDetailsModal(true);
   };
 
   // View user transactions
@@ -232,6 +240,7 @@ const Users = () => {
   const closeModals = () => {
     setShowUserModal(false);
     setShowTransactionsModal(false);
+    setShowUserDetailsModal(false);
     setSelectedUser(null);
     setUserTransactions([]);
   };
@@ -348,7 +357,19 @@ const Users = () => {
                     <tr key={user.accountId || index}>
                       <td className="text-muted">{user.date}</td>
                       <td>
-                        <code style={{ fontSize: '11px', background: '#f5f5f5', padding: '2px 6px', borderRadius: '3px' }}>
+                        <code
+                          className="account-id-link"
+                          style={{
+                            fontSize: '11px',
+                            background: '#f5f5f5',
+                            padding: '2px 6px',
+                            borderRadius: '3px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                          onClick={() => handleViewUserDetails(user)}
+                          title="Click to view user details"
+                        >
                           {user.accountId?.substring(0, 15)}...
                         </code>
                       </td>
@@ -505,6 +526,14 @@ const Users = () => {
         </div>
       )}
 
+      {/* User Details Modal (comprehensive view) */}
+      {showUserDetailsModal && selectedUser && (
+        <UserDetailsModal
+          user={selectedUser}
+          onClose={() => setShowUserDetailsModal(false)}
+        />
+      )}
+
       <style>{`
         .modal-overlay {
           position: fixed;
@@ -587,6 +616,10 @@ const Users = () => {
         }
         .detail-value {
           font-weight: 500;
+        }
+        .account-id-link:hover {
+          background: #e0e7ff !important;
+          color: #3730a3;
         }
       `}</style>
     </div>
