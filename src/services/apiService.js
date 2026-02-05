@@ -455,5 +455,112 @@ export const getBetHistory = (accountId, params = { limit: 20, offset: 0 }) => {
 export const getBetHistoryCount = (accountId) =>
   apiRequest(`/api/wallets/commissions/bet-history/${accountId}/count`);
 
+// ============================================
+// CHAT MANAGEMENT
+// Base URL: /api/admin/chats
+// ============================================
+
+/**
+ * Get waiting chats (no agent assigned)
+ * GET /api/admin/chats/queue
+ *
+ * @returns {Promise<Object>} - Array of waiting chat sessions
+ */
+export const getChatQueue = () => apiRequest('/api/admin/chats/queue');
+
+/**
+ * Get chat session details
+ * GET /api/admin/chats/sessions/{sessionId}
+ *
+ * @param {string} sessionId - Chat session ID
+ * @returns {Promise<Object>} - Chat session details
+ */
+export const getChatSession = (sessionId) =>
+  apiRequest(`/api/admin/chats/sessions/${sessionId}`);
+
+/**
+ * Get chat messages for a session
+ * GET /api/admin/chats/sessions/{sessionId}/messages
+ *
+ * @param {string} sessionId - Chat session ID
+ * @returns {Promise<Object>} - Array of chat messages
+ */
+export const getChatMessages = (sessionId) =>
+  apiRequest(`/api/admin/chats/sessions/${sessionId}/messages`);
+
+/**
+ * Get all chats for an account
+ * GET /api/admin/chats/account/{accountId}
+ *
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object>} - Array of chat sessions for the account
+ */
+export const getChatsForAccount = (accountId) =>
+  apiRequest(`/api/admin/chats/account/${accountId}`);
+
+/**
+ * Assign agent to a chat session
+ * POST /api/admin/chats/sessions/{sessionId}/assign?agentId={id}
+ *
+ * @param {string} sessionId - Chat session ID
+ * @param {string} agentId - Agent ID to assign
+ * @returns {Promise<Object>} - Updated session
+ */
+export const assignChatAgent = (sessionId, agentId) =>
+  apiRequest(`/api/admin/chats/sessions/${sessionId}/assign?agentId=${agentId}`, {
+    method: 'POST',
+  });
+
+/**
+ * Close a chat session
+ * POST /api/admin/chats/sessions/{sessionId}/close
+ *
+ * @param {string} sessionId - Chat session ID
+ * @returns {Promise<Object>} - Closed session
+ */
+export const closeChatSession = (sessionId) =>
+  apiRequest(`/api/admin/chats/sessions/${sessionId}/close`, {
+    method: 'POST',
+  });
+
+/**
+ * Send message to a chat session
+ * POST /api/admin/chats/sessions/{sessionId}/messages
+ *
+ * @param {string} sessionId - Chat session ID
+ * @param {Object} messageData - Message content
+ * @returns {Promise<Object>} - Sent message
+ */
+export const sendChatMessage = (sessionId, messageData) =>
+  apiRequest(`/api/admin/chats/sessions/${sessionId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(messageData),
+  });
+
+// ============================================
+// IP / ACCOUNT DETAILS
+// Base URL: /api/admin/accounts
+// ============================================
+
+/**
+ * Get last IP for an account
+ * GET /api/admin/accounts/{accountId}/ip
+ *
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object>} - IP information
+ */
+export const getAccountIp = (accountId) =>
+  apiRequest(`/api/admin/accounts/${accountId}/ip`);
+
+/**
+ * Get full account details (includes lastIp)
+ * GET /api/admin/accounts/{accountId}
+ *
+ * @param {string} accountId - Account ID
+ * @returns {Promise<Object>} - Full account details
+ */
+export const getAccountDetails = (accountId) =>
+  apiRequest(`/api/admin/accounts/${accountId}`);
+
 // Export the base request function for custom calls
 export { apiRequest, API_BASE_URL };

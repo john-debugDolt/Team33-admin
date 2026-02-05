@@ -10,7 +10,11 @@ import {
   getCommissionEarnings,
   getPendingCommissionTotal,
   getReferralsByPrincipal,
-  getReferralByReferred
+  getReferralByReferred,
+  getChatsForAccount,
+  getChatMessages,
+  getAccountIp,
+  getAccountDetails
 } from '../../services/apiService';
 
 /**
@@ -35,6 +39,19 @@ const UserDetailsModal = ({ user, onClose }) => {
   const [referredBy, setReferredBy] = useState(null);
   const [commissionFilter, setCommissionFilter] = useState({ status: '', type: '' });
   const [copied, setCopied] = useState(false);
+
+  // Chat state
+  const [chatSessions, setChatSessions] = useState([]);
+  const [selectedChatSession, setSelectedChatSession] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // IP state
+  const [ipData, setIpData] = useState(null);
+  const [accountDetails, setAccountDetails] = useState(null);
+
+  // Logs state (combined view)
+  const [logs, setLogs] = useState([]);
 
   // Pagination settings
   const BET_HISTORY_LIMIT = 20;
@@ -84,6 +101,24 @@ const UserDetailsModal = ({ user, onClose }) => {
       console.error('Error fetching bet history page:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load messages for a selected chat session
+  const loadChatMessages = async (session) => {
+    setSelectedChatSession(session);
+    setLoadingMessages(true);
+    setChatMessages([]);
+
+    try {
+      const result = await getChatMessages(session.sessionId || session.id);
+      if (result.success) {
+        setChatMessages(Array.isArray(result.data) ? result.data : []);
+      }
+    } catch (err) {
+      console.error('Error loading chat messages:', err);
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
@@ -168,6 +203,101 @@ const UserDetailsModal = ({ user, onClose }) => {
             if (referredByResult.success && referredByResult.data) {
               setReferredBy(referredByResult.data);
             }
+            break;
+
+          case 'CHAT':
+            // Fetch chat sessions for this account
+            const chatResult = await getChatsForAccount(user.accountId);
+            if (chatResult.success) {
+              setChatSessions(Array.isArray(chatResult.data) ? chatResult.data : []);
+            }
+            break;
+
+          case 'IP':
+            // Fetch IP and account details
+            const [ipResult, detailsResult] = await Promise.all([
+              getAccountIp(user.accountId),
+              getAccountDetails(user.accountId)
+            ]);
+
+            if (ipResult.success) {
+              setIpData(ipResult.data);
+            }
+            if (detailsResult.success) {
+              setAccountDetails(detailsResult.data);
+            }
+            break;
+
+          case 'LOG':
+            // Fetch all data for combined log view
+            const [logDeposits, logWithdrawals, logBets, logChats] = await Promise.all([
+              getDepositsForAccount(user.accountId),
+              getWithdrawalsForAccount(user.accountId),
+              getBetHistory(user.accountId, { limit: 50, offset: 0 }),
+              getChatsForAccount(user.accountId)
+            ]);
+
+            const allLogs = [];
+
+            // Add deposits
+            if (logDeposits.success && Array.isArray(logDeposits.data)) {
+              logDeposits.data.forEach(d => {
+                allLogs.push({
+                  type: 'DEPOSIT',
+                  date: d.createdAt,
+                  description: `Deposit of $${parseFloat(d.amount || 0).toFixed(2)}`,
+                  status: d.status,
+                  id: d.depositId,
+                  amount: d.amount
+                });
+              });
+            }
+
+            // Add withdrawals
+            if (logWithdrawals.success && Array.isArray(logWithdrawals.data)) {
+              logWithdrawals.data.forEach(w => {
+                allLogs.push({
+                  type: 'WITHDRAWAL',
+                  date: w.createdAt,
+                  description: `Withdrawal of $${parseFloat(w.amount || 0).toFixed(2)}`,
+                  status: w.status,
+                  id: w.withdrawId,
+                  amount: w.amount
+                });
+              });
+            }
+
+            // Add bet history
+            if (logBets.success && Array.isArray(logBets.data)) {
+              logBets.data.forEach(b => {
+                const profit = (b.winAmount || 0) - (b.betAmount || 0);
+                allLogs.push({
+                  type: 'BET',
+                  date: b.createdAt,
+                  description: `${b.gameSlug || 'Game'} - Bet: $${parseFloat(b.betAmount || 0).toFixed(2)}, Win: $${parseFloat(b.winAmount || 0).toFixed(2)}`,
+                  status: b.status,
+                  id: b.roundId,
+                  profit: profit
+                });
+              });
+            }
+
+            // Add chats
+            if (logChats.success && Array.isArray(logChats.data)) {
+              logChats.data.forEach(c => {
+                allLogs.push({
+                  type: 'CHAT',
+                  date: c.createdAt || c.startedAt,
+                  description: `Chat session ${c.status === 'CLOSED' ? 'closed' : 'started'}`,
+                  status: c.status,
+                  id: c.sessionId
+                });
+              });
+            }
+
+            // Sort by date (newest first)
+            allLogs.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            setLogs(allLogs);
             break;
 
           default:
@@ -527,7 +657,75 @@ const UserDetailsModal = ({ user, onClose }) => {
       case 'CHAT':
         return (
           <div className="chat-section">
-            <div className="empty-state">Chat history coming soon</div>
+            {/* Chat Sessions List */}
+            <div className="chat-layout">
+              <div className="chat-sessions-list">
+                <h4>Chat Sessions ({chatSessions.length})</h4>
+                {chatSessions.length === 0 ? (
+                  <div className="empty-state small">No chat sessions found</div>
+                ) : (
+                  <div className="sessions-container">
+                    {chatSessions.map((session, idx) => (
+                      <div
+                        key={session.sessionId || session.id || idx}
+                        className={`session-item ${selectedChatSession?.sessionId === session.sessionId || selectedChatSession?.id === session.id ? 'active' : ''}`}
+                        onClick={() => loadChatMessages(session)}
+                      >
+                        <div className="session-info">
+                          <span className="session-id">#{(session.sessionId || session.id || '-').substring(0, 8)}...</span>
+                          <span className={`session-status status-badge ${session.status?.toLowerCase()}`}>
+                            {session.status || 'UNKNOWN'}
+                          </span>
+                        </div>
+                        <div className="session-meta">
+                          <span className="session-date">{formatDateTime(session.createdAt || session.startedAt)}</span>
+                          {session.agentId && <span className="session-agent">Agent: {session.agentId.substring(0, 8)}...</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Chat Messages View */}
+              <div className="chat-messages-view">
+                {!selectedChatSession ? (
+                  <div className="empty-state">Select a chat session to view messages</div>
+                ) : loadingMessages ? (
+                  <div className="tab-loading">
+                    <div className="spinner"></div>
+                    <span>Loading messages...</span>
+                  </div>
+                ) : (
+                  <>
+                    <div className="messages-header">
+                      <span>Session: {selectedChatSession.sessionId || selectedChatSession.id}</span>
+                      <span className={`status-badge ${selectedChatSession.status?.toLowerCase()}`}>
+                        {selectedChatSession.status}
+                      </span>
+                    </div>
+                    <div className="messages-container">
+                      {chatMessages.length === 0 ? (
+                        <div className="empty-state small">No messages in this session</div>
+                      ) : (
+                        chatMessages.map((msg, idx) => (
+                          <div
+                            key={msg.messageId || msg.id || idx}
+                            className={`message-bubble ${msg.senderType === 'AGENT' || msg.isAgent ? 'agent' : 'user'}`}
+                          >
+                            <div className="message-sender">
+                              {msg.senderType === 'AGENT' || msg.isAgent ? 'Support Agent' : 'User'}
+                            </div>
+                            <div className="message-content">{msg.content || msg.message}</div>
+                            <div className="message-time">{formatDateTime(msg.createdAt || msg.timestamp)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         );
 
@@ -548,7 +746,85 @@ const UserDetailsModal = ({ user, onClose }) => {
       case 'IP':
         return (
           <div className="ip-section">
-            <div className="empty-state">IP history coming soon</div>
+            {/* IP Information */}
+            <div className="ip-info-grid">
+              <div className="ip-card primary">
+                <label>Current IP Address</label>
+                <span className="ip-value">{ipData?.currentIp || ipData?.ip || accountDetails?.lastIp || '-'}</span>
+              </div>
+              <div className="ip-card">
+                <label>Registration IP</label>
+                <span className="ip-value">{ipData?.registrationIp || accountDetails?.registrationIp || '-'}</span>
+              </div>
+              <div className="ip-card">
+                <label>Last Login IP</label>
+                <span className="ip-value">{ipData?.lastLoginIp || accountDetails?.lastLoginIp || '-'}</span>
+              </div>
+              <div className="ip-card">
+                <label>Country</label>
+                <span>{ipData?.country || accountDetails?.country || '-'}</span>
+              </div>
+              <div className="ip-card">
+                <label>City</label>
+                <span>{ipData?.city || accountDetails?.city || '-'}</span>
+              </div>
+              <div className="ip-card">
+                <label>ISP</label>
+                <span>{ipData?.isp || '-'}</span>
+              </div>
+            </div>
+
+            {/* IP History Table */}
+            {(ipData?.history || ipData?.ipHistory) && (
+              <div className="ip-history-section">
+                <h4>IP History</h4>
+                <table className="data-table compact">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>IP Address</th>
+                      <th>Location</th>
+                      <th>Device</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(ipData?.history || ipData?.ipHistory || []).map((entry, idx) => (
+                      <tr key={idx}>
+                        <td>{formatDateTime(entry.timestamp || entry.createdAt)}</td>
+                        <td className="mono">{entry.ip || entry.ipAddress}</td>
+                        <td>{entry.location || `${entry.city || ''} ${entry.country || ''}`.trim() || '-'}</td>
+                        <td>{entry.device || entry.userAgent || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Account Details if available */}
+            {accountDetails && (
+              <div className="account-details-section">
+                <h4>Account Details</h4>
+                <div className="details-grid">
+                  <div className="detail-item">
+                    <label>Last Login</label>
+                    <span>{formatDateTime(accountDetails.lastLoginAt) || '-'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>Login Count</label>
+                    <span>{accountDetails.loginCount || 0}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>Device Type</label>
+                    <span>{accountDetails.deviceType || '-'}</span>
+                  </div>
+                  <div className="detail-item">
+                    <label>Browser</label>
+                    <span>{accountDetails.browser || '-'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
 
@@ -569,7 +845,55 @@ const UserDetailsModal = ({ user, onClose }) => {
       case 'LOG':
         return (
           <div className="log-section">
-            <div className="empty-state">Activity log coming soon</div>
+            <div className="log-stats">
+              <span>Total Activity: <strong>{logs.length}</strong></span>
+              <div className="log-legend">
+                <span className="legend-item deposit">Deposits</span>
+                <span className="legend-item withdrawal">Withdrawals</span>
+                <span className="legend-item bet">Bets</span>
+                <span className="legend-item chat">Chats</span>
+              </div>
+            </div>
+
+            {logs.length === 0 ? (
+              <div className="empty-state">No activity logs found</div>
+            ) : (
+              <div className="log-timeline">
+                {logs.map((log, idx) => (
+                  <div key={log.id || idx} className={`log-entry ${log.type.toLowerCase()}`}>
+                    <div className="log-icon">
+                      {log.type === 'DEPOSIT' && '💰'}
+                      {log.type === 'WITHDRAWAL' && '💸'}
+                      {log.type === 'BET' && '🎰'}
+                      {log.type === 'CHAT' && '💬'}
+                    </div>
+                    <div className="log-content">
+                      <div className="log-header">
+                        <span className={`log-type type-badge ${log.type.toLowerCase()}`}>{log.type}</span>
+                        <span className="log-date">{formatDateTime(log.date)}</span>
+                      </div>
+                      <div className="log-description">{log.description}</div>
+                      <div className="log-meta">
+                        {log.status && (
+                          <span className={`status-badge ${log.status?.toLowerCase()}`}>{log.status}</span>
+                        )}
+                        {log.amount && log.type !== 'BET' && (
+                          <span className={log.type === 'DEPOSIT' ? 'text-success' : 'text-danger'}>
+                            {log.type === 'DEPOSIT' ? '+' : '-'}${parseFloat(log.amount || 0).toFixed(2)}
+                          </span>
+                        )}
+                        {log.profit !== undefined && log.type === 'BET' && (
+                          <span className={log.profit >= 0 ? 'text-success' : 'text-danger'}>
+                            {log.profit >= 0 ? '+' : ''}${log.profit.toFixed(2)}
+                          </span>
+                        )}
+                        <span className="log-id mono small">{(log.id || '-').substring(0, 12)}...</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
 
@@ -1119,6 +1443,368 @@ const UserDetailsModal = ({ user, onClose }) => {
           color: #6b7280;
         }
 
+        /* CHAT Section Styles */
+        .chat-section {
+          height: 100%;
+        }
+
+        .chat-layout {
+          display: grid;
+          grid-template-columns: 280px 1fr;
+          gap: 20px;
+          height: 400px;
+        }
+
+        .chat-sessions-list {
+          background: #f9fafb;
+          border-radius: 8px;
+          padding: 16px;
+          overflow-y: auto;
+        }
+
+        .chat-sessions-list h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          color: #374151;
+        }
+
+        .sessions-container {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .session-item {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .session-item:hover {
+          border-color: #d1d5db;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .session-item.active {
+          border-color: #1a1a2e;
+          background: #f3f4f6;
+        }
+
+        .session-info {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 6px;
+        }
+
+        .session-id {
+          font-family: 'Monaco', 'Consolas', monospace;
+          font-size: 12px;
+          color: #374151;
+        }
+
+        .session-status {
+          font-size: 10px;
+        }
+
+        .session-meta {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          font-size: 11px;
+          color: #6b7280;
+        }
+
+        .chat-messages-view {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+
+        .messages-header {
+          padding: 12px 16px;
+          background: #f9fafb;
+          border-bottom: 1px solid #e5e7eb;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 13px;
+        }
+
+        .messages-container {
+          flex: 1;
+          overflow-y: auto;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .message-bubble {
+          max-width: 70%;
+          padding: 12px 16px;
+          border-radius: 12px;
+          font-size: 13px;
+        }
+
+        .message-bubble.user {
+          background: #e0e7ff;
+          align-self: flex-start;
+          border-bottom-left-radius: 4px;
+        }
+
+        .message-bubble.agent {
+          background: #dcfce7;
+          align-self: flex-end;
+          border-bottom-right-radius: 4px;
+        }
+
+        .message-sender {
+          font-size: 11px;
+          font-weight: 600;
+          color: #6b7280;
+          margin-bottom: 4px;
+        }
+
+        .message-content {
+          color: #111827;
+          line-height: 1.4;
+        }
+
+        .message-time {
+          font-size: 10px;
+          color: #9ca3af;
+          margin-top: 6px;
+          text-align: right;
+        }
+
+        .empty-state.small {
+          padding: 30px 10px;
+          font-size: 12px;
+        }
+
+        /* IP Section Styles */
+        .ip-section {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .ip-info-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 16px;
+        }
+
+        .ip-card {
+          background: #f9fafb;
+          padding: 16px;
+          border-radius: 8px;
+          text-align: center;
+        }
+
+        .ip-card.primary {
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+          color: #fff;
+        }
+
+        .ip-card label {
+          display: block;
+          font-size: 11px;
+          color: #6b7280;
+          text-transform: uppercase;
+          margin-bottom: 8px;
+        }
+
+        .ip-card.primary label {
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .ip-value {
+          font-family: 'Monaco', 'Consolas', monospace;
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .ip-card.primary .ip-value {
+          font-size: 18px;
+          color: #fff;
+        }
+
+        .ip-history-section,
+        .account-details-section {
+          background: #f9fafb;
+          padding: 16px;
+          border-radius: 8px;
+        }
+
+        .ip-history-section h4,
+        .account-details-section h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          color: #374151;
+        }
+
+        /* LOG Section Styles */
+        .log-section {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        .log-stats {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 16px;
+          background: #f9fafb;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #6b7280;
+        }
+
+        .log-stats strong {
+          color: #111827;
+        }
+
+        .log-legend {
+          display: flex;
+          gap: 12px;
+        }
+
+        .legend-item {
+          font-size: 11px;
+          padding: 4px 8px;
+          border-radius: 4px;
+        }
+
+        .legend-item.deposit {
+          background: #dcfce7;
+          color: #166534;
+        }
+
+        .legend-item.withdrawal {
+          background: #fed7aa;
+          color: #9a3412;
+        }
+
+        .legend-item.bet {
+          background: #e0e7ff;
+          color: #3730a3;
+        }
+
+        .legend-item.chat {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .log-timeline {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .log-entry {
+          display: flex;
+          gap: 12px;
+          padding: 16px;
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          transition: all 0.2s;
+        }
+
+        .log-entry:hover {
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .log-entry.deposit {
+          border-left: 4px solid #16a34a;
+        }
+
+        .log-entry.withdrawal {
+          border-left: 4px solid #ea580c;
+        }
+
+        .log-entry.bet {
+          border-left: 4px solid #4f46e5;
+        }
+
+        .log-entry.chat {
+          border-left: 4px solid #d97706;
+        }
+
+        .log-icon {
+          font-size: 24px;
+          width: 40px;
+          height: 40px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #f3f4f6;
+          border-radius: 8px;
+          flex-shrink: 0;
+        }
+
+        .log-content {
+          flex: 1;
+          min-width: 0;
+        }
+
+        .log-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 6px;
+        }
+
+        .log-type {
+          font-size: 10px;
+        }
+
+        .type-badge.bet {
+          background: #e0e7ff;
+          color: #3730a3;
+        }
+
+        .type-badge.chat {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .log-date {
+          font-size: 12px;
+          color: #6b7280;
+        }
+
+        .log-description {
+          font-size: 14px;
+          color: #111827;
+          margin-bottom: 8px;
+        }
+
+        .log-meta {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+
+        .log-id {
+          color: #9ca3af;
+        }
+
+        .status-badge.closed {
+          background: #e5e7eb;
+          color: #374151;
+        }
+
         @media (max-width: 768px) {
           .user-details-modal {
             max-height: 100vh;
@@ -1142,6 +1828,36 @@ const UserDetailsModal = ({ user, onClose }) => {
 
           .details-grid {
             grid-template-columns: 1fr;
+          }
+
+          .chat-layout {
+            grid-template-columns: 1fr;
+            height: auto;
+          }
+
+          .chat-sessions-list {
+            max-height: 200px;
+          }
+
+          .chat-messages-view {
+            min-height: 300px;
+          }
+
+          .ip-info-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .log-stats {
+            flex-direction: column;
+            gap: 8px;
+          }
+
+          .log-legend {
+            flex-wrap: wrap;
+          }
+
+          .message-bubble {
+            max-width: 85%;
           }
         }
       `}</style>
