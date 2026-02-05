@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { FiX, FiUser, FiPhone, FiCalendar, FiCopy, FiCheck } from 'react-icons/fi';
+import { FiX, FiUser, FiPhone, FiCalendar, FiCopy, FiCheck, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { formatDateTime } from '../utils/dateUtils';
 import {
   getWallet,
   getDepositsForAccount,
   getWithdrawalsForAccount,
   getBetHistory,
+  getBetHistoryCount,
   getCommissionEarnings,
   getReferralsByPrincipal
 } from '../../services/apiService';
@@ -24,8 +25,13 @@ const UserDetailsModal = ({ user, onClose }) => {
   const [walletData, setWalletData] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [betHistory, setBetHistory] = useState([]);
+  const [betHistoryTotal, setBetHistoryTotal] = useState(0);
+  const [betHistoryPage, setBetHistoryPage] = useState(0);
   const [commissions, setCommissions] = useState([]);
   const [copied, setCopied] = useState(false);
+
+  // Pagination settings
+  const BET_HISTORY_LIMIT = 20;
 
   // Tab definitions
   const tabs = [
@@ -50,6 +56,29 @@ const UserDetailsModal = ({ user, onClose }) => {
     navigator.clipboard.writeText(user.accountId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Handle bet history pagination
+  const handleBetHistoryPageChange = async (newPage) => {
+    if (newPage < 0 || newPage >= Math.ceil(betHistoryTotal / BET_HISTORY_LIMIT)) return;
+
+    setLoading(true);
+    setBetHistoryPage(newPage);
+
+    try {
+      const betResult = await getBetHistory(user.accountId, {
+        limit: BET_HISTORY_LIMIT,
+        offset: newPage * BET_HISTORY_LIMIT
+      });
+
+      if (betResult.success) {
+        setBetHistory(Array.isArray(betResult.data) ? betResult.data : []);
+      }
+    } catch (err) {
+      console.error('Error fetching bet history page:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Fetch data when tab changes
@@ -91,9 +120,24 @@ const UserDetailsModal = ({ user, onClose }) => {
             break;
 
           case 'BET HISTORY':
-            const betResult = await getBetHistory(user.accountId, { limit: 50, offset: 0 });
+            // Fetch bet history with pagination and total count
+            const [betResult, countResult] = await Promise.all([
+              getBetHistory(user.accountId, {
+                limit: BET_HISTORY_LIMIT,
+                offset: betHistoryPage * BET_HISTORY_LIMIT
+              }),
+              getBetHistoryCount(user.accountId)
+            ]);
+
             if (betResult.success) {
               setBetHistory(Array.isArray(betResult.data) ? betResult.data : []);
+            }
+            if (countResult.success) {
+              // Count could be a number or object with count property
+              const count = typeof countResult.data === 'number'
+                ? countResult.data
+                : countResult.data?.count || 0;
+              setBetHistoryTotal(count);
             }
             break;
 
@@ -246,39 +290,74 @@ const UserDetailsModal = ({ user, onClose }) => {
         );
 
       case 'BET HISTORY':
+        const totalPages = Math.ceil(betHistoryTotal / BET_HISTORY_LIMIT);
         return (
           <div className="bet-history-section">
+            {/* Summary stats */}
+            <div className="bet-history-stats">
+              <span>Total Records: <strong>{betHistoryTotal}</strong></span>
+              <span>Showing: <strong>{betHistory.length}</strong> of {betHistoryTotal}</span>
+            </div>
+
             {betHistory.length === 0 ? (
               <div className="empty-state">No bet history found</div>
             ) : (
-              <table className="data-table compact">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Game</th>
-                    <th>Bet Amount</th>
-                    <th>Win/Loss</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {betHistory.map((bet, idx) => (
-                    <tr key={bet.betId || idx}>
-                      <td>{formatDateTime(bet.createdAt)}</td>
-                      <td>{bet.gameName || bet.gameType || '-'}</td>
-                      <td>${parseFloat(bet.betAmount || 0).toFixed(2)}</td>
-                      <td className={bet.winAmount > 0 ? 'text-success' : 'text-danger'}>
-                        {bet.winAmount > 0 ? '+' : ''}${parseFloat(bet.winAmount || 0).toFixed(2)}
-                      </td>
-                      <td>
-                        <span className={`status-badge ${bet.status?.toLowerCase()}`}>
-                          {bet.status || 'COMPLETED'}
-                        </span>
-                      </td>
+              <>
+                <table className="data-table compact">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Round ID</th>
+                      <th>Game</th>
+                      <th>Provider</th>
+                      <th>Bet Amount</th>
+                      <th>Win Amount</th>
+                      <th>Profit/Loss</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {betHistory.map((bet, idx) => {
+                      const profit = (bet.winAmount || 0) - (bet.betAmount || 0);
+                      return (
+                        <tr key={bet.roundId || bet.betId || idx}>
+                          <td>{formatDateTime(bet.createdAt || bet.timestamp)}</td>
+                          <td className="mono small">{(bet.roundId || '-').substring(0, 12)}...</td>
+                          <td>{bet.gameName || bet.gameCode || '-'}</td>
+                          <td>{bet.provider || bet.gameProvider || '-'}</td>
+                          <td>${parseFloat(bet.betAmount || bet.stake || 0).toFixed(2)}</td>
+                          <td className="text-success">${parseFloat(bet.winAmount || bet.payout || 0).toFixed(2)}</td>
+                          <td className={profit >= 0 ? 'text-success' : 'text-danger'}>
+                            {profit >= 0 ? '+' : ''}${profit.toFixed(2)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="pagination">
+                    <button
+                      className="pagination-btn"
+                      onClick={() => handleBetHistoryPageChange(betHistoryPage - 1)}
+                      disabled={betHistoryPage === 0}
+                    >
+                      <FiChevronLeft /> Previous
+                    </button>
+                    <span className="pagination-info">
+                      Page {betHistoryPage + 1} of {totalPages}
+                    </span>
+                    <button
+                      className="pagination-btn"
+                      onClick={() => handleBetHistoryPageChange(betHistoryPage + 1)}
+                      disabled={betHistoryPage >= totalPages - 1}
+                    >
+                      Next <FiChevronRight />
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         );
@@ -757,6 +836,61 @@ const UserDetailsModal = ({ user, onClose }) => {
 
         .small {
           font-size: 11px;
+        }
+
+        .bet-history-stats {
+          display: flex;
+          justify-content: space-between;
+          padding: 12px 16px;
+          background: #f9fafb;
+          border-radius: 8px;
+          margin-bottom: 16px;
+          font-size: 13px;
+          color: #6b7280;
+        }
+
+        .bet-history-stats strong {
+          color: #111827;
+        }
+
+        .pagination {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 16px;
+          margin-top: 20px;
+          padding-top: 16px;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        .pagination-btn {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          background: #fff;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          font-size: 13px;
+          font-weight: 500;
+          color: #374151;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .pagination-btn:hover:not(:disabled) {
+          background: #f3f4f6;
+          border-color: #9ca3af;
+        }
+
+        .pagination-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .pagination-info {
+          font-size: 13px;
+          color: #6b7280;
         }
 
         @media (max-width: 768px) {

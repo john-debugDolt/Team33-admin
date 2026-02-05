@@ -397,27 +397,33 @@ export const creditPendingCommissions = (principalAccountId) =>
   });
 
 // ============================================
-// BET HISTORY (ADMIN only)
+// BET HISTORY
 // ============================================
 
 /**
- * Get bet history for account
- * @param {string} accountId - Account ID
+ * Get bet history (game rounds) for account with pagination
+ * GET /api/wallets/commissions/bet-history/{accountId}
+ *
+ * @param {string} accountId - Account ID (e.g., ACC287106027097165824)
  * @param {Object} params - Query parameters
- * @param {number} params.limit - Number of records (default: 20)
- * @param {number} params.offset - Offset for pagination (default: 0)
+ * @param {number} params.limit - Number of records (default: 20, max: 100)
+ * @param {number} params.offset - Pagination offset (default: 0)
+ * @returns {Promise<Object>} - Array of GameRound objects
  */
 export const getBetHistory = (accountId, params = { limit: 20, offset: 0 }) => {
   const queryParams = new URLSearchParams(params).toString();
-  return apiRequest(`/api/admin/commissions/bet-history/${accountId}?${queryParams}`);
+  return apiRequest(`/api/wallets/commissions/bet-history/${accountId}?${queryParams}`);
 };
 
 /**
- * Get bet history count for account
+ * Get total count of bet history records for account
+ * GET /api/wallets/commissions/bet-history/{accountId}/count
+ *
  * @param {string} accountId - Account ID
+ * @returns {Promise<Object>} - Count number
  */
 export const getBetHistoryCount = (accountId) =>
-  apiRequest(`/api/admin/commissions/bet-history/${accountId}/count`);
+  apiRequest(`/api/wallets/commissions/bet-history/${accountId}/count`);
 
 // Export the base request function for custom calls
 export { apiRequest, API_BASE_URL };
