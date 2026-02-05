@@ -744,86 +744,96 @@ const UserDetailsModal = ({ user, onClose }) => {
         );
 
       case 'IP':
+        // Check if we have any IP data to display
+        const hasIpData = ipData || accountDetails;
+        const currentIp = ipData?.currentIp || ipData?.ip || ipData?.lastIp || accountDetails?.lastIp || accountDetails?.ip;
+
         return (
           <div className="ip-section">
-            {/* IP Information */}
-            <div className="ip-info-grid">
-              <div className="ip-card primary">
-                <label>Current IP Address</label>
-                <span className="ip-value">{ipData?.currentIp || ipData?.ip || accountDetails?.lastIp || '-'}</span>
-              </div>
-              <div className="ip-card">
-                <label>Registration IP</label>
-                <span className="ip-value">{ipData?.registrationIp || accountDetails?.registrationIp || '-'}</span>
-              </div>
-              <div className="ip-card">
-                <label>Last Login IP</label>
-                <span className="ip-value">{ipData?.lastLoginIp || accountDetails?.lastLoginIp || '-'}</span>
-              </div>
-              <div className="ip-card">
-                <label>Country</label>
-                <span>{ipData?.country || accountDetails?.country || '-'}</span>
-              </div>
-              <div className="ip-card">
-                <label>City</label>
-                <span>{ipData?.city || accountDetails?.city || '-'}</span>
-              </div>
-              <div className="ip-card">
-                <label>ISP</label>
-                <span>{ipData?.isp || '-'}</span>
-              </div>
-            </div>
-
-            {/* IP History Table */}
-            {(ipData?.history || ipData?.ipHistory) && (
-              <div className="ip-history-section">
-                <h4>IP History</h4>
-                <table className="data-table compact">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>IP Address</th>
-                      <th>Location</th>
-                      <th>Device</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(ipData?.history || ipData?.ipHistory || []).map((entry, idx) => (
-                      <tr key={idx}>
-                        <td>{formatDateTime(entry.timestamp || entry.createdAt)}</td>
-                        <td className="mono">{entry.ip || entry.ipAddress}</td>
-                        <td>{entry.location || `${entry.city || ''} ${entry.country || ''}`.trim() || '-'}</td>
-                        <td>{entry.device || entry.userAgent || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {/* Account Details if available */}
-            {accountDetails && (
-              <div className="account-details-section">
-                <h4>Account Details</h4>
-                <div className="details-grid">
-                  <div className="detail-item">
-                    <label>Last Login</label>
-                    <span>{formatDateTime(accountDetails.lastLoginAt) || '-'}</span>
+            {!hasIpData ? (
+              <div className="empty-state">No IP data available for this account</div>
+            ) : (
+              <>
+                {/* IP Information */}
+                <div className="ip-info-grid">
+                  <div className="ip-card primary">
+                    <label>Current IP Address</label>
+                    <span className="ip-value">{currentIp || 'Not recorded'}</span>
                   </div>
-                  <div className="detail-item">
-                    <label>Login Count</label>
-                    <span>{accountDetails.loginCount || 0}</span>
+                  <div className="ip-card">
+                    <label>Registration IP</label>
+                    <span className="ip-value">{ipData?.registrationIp || accountDetails?.registrationIp || '-'}</span>
                   </div>
-                  <div className="detail-item">
-                    <label>Device Type</label>
-                    <span>{accountDetails.deviceType || '-'}</span>
+                  <div className="ip-card">
+                    <label>Last Login IP</label>
+                    <span className="ip-value">{ipData?.lastLoginIp || accountDetails?.lastLoginIp || currentIp || '-'}</span>
                   </div>
-                  <div className="detail-item">
-                    <label>Browser</label>
-                    <span>{accountDetails.browser || '-'}</span>
+                  <div className="ip-card">
+                    <label>Country</label>
+                    <span>{ipData?.country || accountDetails?.country || '-'}</span>
+                  </div>
+                  <div className="ip-card">
+                    <label>City</label>
+                    <span>{ipData?.city || accountDetails?.city || '-'}</span>
+                  </div>
+                  <div className="ip-card">
+                    <label>ISP</label>
+                    <span>{ipData?.isp || '-'}</span>
                   </div>
                 </div>
-              </div>
+
+                {/* IP History Table */}
+                {(ipData?.history || ipData?.ipHistory || ipData?.loginHistory) && (
+                  <div className="ip-history-section">
+                    <h4>IP History</h4>
+                    <table className="data-table compact">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>IP Address</th>
+                          <th>Location</th>
+                          <th>Device</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(ipData?.history || ipData?.ipHistory || ipData?.loginHistory || []).map((entry, idx) => (
+                          <tr key={idx}>
+                            <td>{formatDateTime(entry.timestamp || entry.createdAt || entry.loginAt)}</td>
+                            <td className="mono">{entry.ip || entry.ipAddress}</td>
+                            <td>{entry.location || `${entry.city || ''} ${entry.country || ''}`.trim() || '-'}</td>
+                            <td>{entry.device || entry.userAgent || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Account Details if available */}
+                {accountDetails && (
+                  <div className="account-details-section">
+                    <h4>Account Details</h4>
+                    <div className="details-grid">
+                      <div className="detail-item">
+                        <label>Last Login</label>
+                        <span>{formatDateTime(accountDetails.lastLoginAt || accountDetails.lastLogin) || '-'}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Login Count</label>
+                        <span>{accountDetails.loginCount || accountDetails.totalLogins || 0}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Device Type</label>
+                        <span>{accountDetails.deviceType || accountDetails.device || '-'}</span>
+                      </div>
+                      <div className="detail-item">
+                        <label>Browser</label>
+                        <span>{accountDetails.browser || accountDetails.userAgent || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         );
