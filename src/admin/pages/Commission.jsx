@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock, FiEdit2, FiSave, FiX, FiUsers, FiSettings, FiSearch } from 'react-icons/fi';
+import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock, FiEdit2, FiSave, FiX, FiUsers, FiSettings, FiSearch, FiCheck } from 'react-icons/fi';
 import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions, getAllReferrals, updateReferral, getReferralsByPrincipal } from '../../services/apiService';
 import UserDetailsModal from '../components/UserDetailsModal';
 
@@ -47,6 +47,10 @@ const Commission = () => {
   // Search for referrals by account ID
   const [searchAccountId, setSearchAccountId] = useState('');
   const [searching, setSearching] = useState(false);
+
+  // Credit confirmation dialog
+  const [showCreditDialog, setShowCreditDialog] = useState(false);
+  const [creditTarget, setCreditTarget] = useState(null); // { accountId, amount, earningId }
 
   const handleAccountClick = (accountId) => {
     if (accountId && accountId !== '-') {
@@ -242,13 +246,23 @@ const Commission = () => {
     fetchReferrals();
   }, [statusFilter, typeFilter]);
 
-  const handleCreditCommission = async (accountId) => {
-    if (!accountId) return;
-    setCreditig(accountId);
+  // Show credit confirmation dialog
+  const showCreditConfirmation = (accountId, amount) => {
+    setCreditTarget({ accountId, amount });
+    setShowCreditDialog(true);
+  };
+
+  // Actually credit the commission after confirmation
+  const handleCreditCommission = async () => {
+    if (!creditTarget?.accountId) return;
+
+    setShowCreditDialog(false);
+    setCreditig(creditTarget.accountId);
+
     try {
-      const result = await creditPendingCommissions(accountId);
+      const result = await creditPendingCommissions(creditTarget.accountId);
       if (result.success) {
-        alert('Commission credited successfully!');
+        alert('Commission credited successfully to user\'s wallet!');
         fetchData();
       } else {
         alert(result.error || 'Failed to credit commission');
@@ -257,7 +271,14 @@ const Commission = () => {
       alert('Error crediting commission: ' + error.message);
     } finally {
       setCreditig(null);
+      setCreditTarget(null);
     }
+  };
+
+  // Cancel credit dialog
+  const cancelCreditDialog = () => {
+    setShowCreditDialog(false);
+    setCreditTarget(null);
   };
 
   const formatCurrency = (amount) => {
@@ -777,7 +798,7 @@ const Commission = () => {
                         <button
                           className="btn btn-success"
                           style={{ padding: '4px 10px', fontSize: '11px' }}
-                          onClick={() => handleCreditCommission(earning.principalAccountId)}
+                          onClick={() => showCreditConfirmation(earning.principalAccountId, earning.commissionAmount || earning.amount)}
                           disabled={crediting === earning.principalAccountId}
                         >
                           {crediting === earning.principalAccountId ? 'Crediting...' : 'Credit'}
@@ -792,6 +813,42 @@ const Commission = () => {
         </div>
       </div>
         </>
+      )}
+
+      {/* Credit Confirmation Dialog */}
+      {showCreditDialog && creditTarget && (
+        <div className="dialog-overlay" onClick={cancelCreditDialog}>
+          <div className="dialog-box" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-icon">
+              <FiCreditCard size={32} />
+            </div>
+            <h3 className="dialog-title">Confirm Credit Commission</h3>
+            <p className="dialog-message">
+              Are you sure you want to credit the pending commission to this user's wallet?
+            </p>
+            <div className="dialog-details">
+              <div className="detail-row">
+                <span className="detail-label">Account ID:</span>
+                <span className="detail-value">{creditTarget.accountId}</span>
+              </div>
+              <div className="detail-row">
+                <span className="detail-label">Amount:</span>
+                <span className="detail-value amount">{formatCurrency(creditTarget.amount)}</span>
+              </div>
+            </div>
+            <p className="dialog-warning">
+              This action will transfer the commission amount to the user's wallet balance.
+            </p>
+            <div className="dialog-actions">
+              <button className="btn btn-secondary" onClick={cancelCreditDialog}>
+                Cancel
+              </button>
+              <button className="btn btn-success" onClick={handleCreditCommission}>
+                <FiCheck /> Approve & Credit
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* User Details Modal */}
@@ -1041,6 +1098,108 @@ const Commission = () => {
           font-size: 13px;
           color: #6b7280;
           margin: 0;
+        }
+        .dialog-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .dialog-box {
+          background: white;
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 420px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+          animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp {
+          from { transform: translateY(20px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .dialog-icon {
+          width: 64px;
+          height: 64px;
+          margin: 0 auto 20px;
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #16a34a;
+        }
+        .dialog-title {
+          margin: 0 0 12px;
+          font-size: 20px;
+          font-weight: 600;
+          color: #111827;
+        }
+        .dialog-message {
+          margin: 0 0 20px;
+          font-size: 14px;
+          color: #6b7280;
+          line-height: 1.5;
+        }
+        .dialog-details {
+          background: #f9fafb;
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 16px;
+        }
+        .detail-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+        }
+        .detail-row:not(:last-child) {
+          border-bottom: 1px solid #e5e7eb;
+        }
+        .detail-label {
+          font-size: 13px;
+          color: #6b7280;
+        }
+        .detail-value {
+          font-size: 13px;
+          font-weight: 600;
+          color: #111827;
+          font-family: monospace;
+        }
+        .detail-value.amount {
+          color: #16a34a;
+          font-size: 16px;
+        }
+        .dialog-warning {
+          font-size: 12px;
+          color: #d97706;
+          background: #fef3c7;
+          padding: 10px 12px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+        }
+        .dialog-actions {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+        }
+        .dialog-actions .btn {
+          padding: 12px 24px;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
       `}</style>
     </div>
