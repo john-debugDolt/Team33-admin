@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock } from 'react-icons/fi';
 import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions } from '../../services/apiService';
+import UserDetailsModal from '../components/UserDetailsModal';
 
 const Commission = () => {
   const [earnings, setEarnings] = useState([]);
@@ -15,6 +16,15 @@ const Commission = () => {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [crediting, setCreditig] = useState(null);
+  const [selectedAccountId, setSelectedAccountId] = useState(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+
+  const handleAccountClick = (accountId) => {
+    if (accountId && accountId !== '-') {
+      setSelectedAccountId(accountId);
+      setShowUserModal(true);
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
@@ -235,11 +245,23 @@ const Commission = () => {
                     <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>
                       {String(earning.id || earning.earningId || '-').slice(-10)}
                     </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                      {String(earning.principalAccountId || '-').slice(-12)}
+                    <td>
+                      <button
+                        className="account-link"
+                        onClick={() => handleAccountClick(earning.principalAccountId)}
+                        disabled={!earning.principalAccountId}
+                      >
+                        {String(earning.principalAccountId || '-').slice(-12)}
+                      </button>
                     </td>
-                    <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                      {String(earning.referredAccountId || '-').slice(-12)}
+                    <td>
+                      <button
+                        className="account-link"
+                        onClick={() => handleAccountClick(earning.referredAccountId)}
+                        disabled={!earning.referredAccountId}
+                      >
+                        {String(earning.referredAccountId || '-').slice(-12)}
+                      </button>
                     </td>
                     <td>
                       <span className={`badge ${getTypeBadge(earning.type)}`}>
@@ -279,6 +301,17 @@ const Commission = () => {
         </div>
       </div>
 
+      {/* User Details Modal */}
+      {showUserModal && selectedAccountId && (
+        <UserDetailsModal
+          accountId={selectedAccountId}
+          onClose={() => {
+            setShowUserModal(false);
+            setSelectedAccountId(null);
+          }}
+        />
+      )}
+
       <style>{`
         .spin {
           animation: spin 1s linear infinite;
@@ -286,6 +319,26 @@ const Commission = () => {
         @keyframes spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        .account-link {
+          background: none;
+          border: none;
+          color: #2563eb;
+          font-family: monospace;
+          font-size: 11px;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 4px;
+          transition: all 0.2s;
+        }
+        .account-link:hover:not(:disabled) {
+          background: #eff6ff;
+          color: #1d4ed8;
+          text-decoration: underline;
+        }
+        .account-link:disabled {
+          color: #9ca3af;
+          cursor: default;
         }
         .filters-row {
           display: flex;
