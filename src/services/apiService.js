@@ -426,6 +426,45 @@ export const creditPendingCommissions = (principalAccountId) =>
     method: 'POST',
   });
 
+/**
+ * Get all referrals (admin endpoint)
+ * GET /api/admin/commissions/referrals
+ *
+ * @param {Object} params - Query parameters
+ * @param {string} params.status - Filter: ACTIVE, INACTIVE
+ * @returns {Promise<Object>} - Array of all referral relationships
+ */
+export const getAllReferrals = (params = {}) => {
+  const queryParams = new URLSearchParams(params).toString();
+  const endpoint = `/api/admin/commissions/referrals${queryParams ? `?${queryParams}` : ''}`;
+  return apiRequest(endpoint);
+};
+
+/**
+ * Get all commission earnings (admin endpoint)
+ * GET /api/admin/commissions/earnings
+ *
+ * @param {Object} params - Query parameters
+ * @param {string} params.status - Filter: PENDING, CREDITED, CANCELLED
+ * @param {string} params.type - Filter: DEPOSIT, PLAY
+ * @param {number} params.limit - Pagination limit
+ * @param {number} params.offset - Pagination offset
+ * @returns {Promise<Object>} - Array of all commission earnings
+ */
+export const getAllCommissionEarnings = (params = {}) => {
+  const queryParams = new URLSearchParams(params).toString();
+  const endpoint = `/api/admin/commissions/earnings${queryParams ? `?${queryParams}` : ''}`;
+  return apiRequest(endpoint);
+};
+
+/**
+ * Get commission statistics (admin endpoint)
+ * GET /api/admin/commissions/stats
+ *
+ * @returns {Promise<Object>} - Commission statistics
+ */
+export const getCommissionStats = () => apiRequest('/api/admin/commissions/stats');
+
 // ============================================
 // BET HISTORY
 // ============================================
