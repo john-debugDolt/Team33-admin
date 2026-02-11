@@ -21,13 +21,69 @@ import {
  * UserDetailsModal Component
  * Shows comprehensive user details with tabbed navigation
  * Displays when user clicks on an Account ID
+ *
+ * Props:
+ * - user: Full user object (optional if accountId is provided)
+ * - accountId: Account ID string (optional if user is provided)
+ * - onClose: Function to close the modal
  */
-const UserDetailsModal = ({ user, onClose }) => {
+const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose }) => {
   // Active tab state
   const [activeTab, setActiveTab] = useState('DETAILS');
 
+  // User state - can be passed as prop or fetched
+  const [user, setUser] = useState(userProp || null);
+  const [userLoading, setUserLoading] = useState(!userProp && !!accountIdProp);
+
   // Data states for each tab
   const [loading, setLoading] = useState(false);
+
+  // Fetch user details if only accountId is provided
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      if (userProp) {
+        setUser(userProp);
+        setUserLoading(false);
+        return;
+      }
+
+      if (!accountIdProp) {
+        setUserLoading(false);
+        return;
+      }
+
+      setUserLoading(true);
+      try {
+        const result = await getAccountDetails(accountIdProp);
+        if (result.success && result.data) {
+          setUser(result.data);
+        } else {
+          // Create minimal user object from accountId
+          setUser({
+            accountId: accountIdProp,
+            firstName: 'Unknown',
+            lastName: 'User',
+            email: '-',
+            phone: '-',
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching user details:', err);
+        // Create minimal user object from accountId
+        setUser({
+          accountId: accountIdProp,
+          firstName: 'Unknown',
+          lastName: 'User',
+          email: '-',
+          phone: '-',
+        });
+      } finally {
+        setUserLoading(false);
+      }
+    };
+
+    fetchUserDetails();
+  }, [userProp, accountIdProp]);
   const [walletData, setWalletData] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [betHistory, setBetHistory] = useState([]);
@@ -990,6 +1046,74 @@ const UserDetailsModal = ({ user, onClose }) => {
     }
   };
 
+  // Show loading state while fetching user
+  if (userLoading || !user) {
+    return (
+      <div className="user-details-overlay" onClick={onClose}>
+        <div className="user-details-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="user-details-header">
+            <div className="user-info">
+              <span className="user-name">
+                <FiUser className="icon" />
+                Loading user details...
+              </span>
+            </div>
+            <button className="close-btn" onClick={onClose}>
+              <FiX size={24} />
+            </button>
+          </div>
+          <div className="user-details-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '200px' }}>
+            <div className="loading-spinner"></div>
+          </div>
+        </div>
+        <style>{`
+          .user-details-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+          }
+          .user-details-modal {
+            background: white;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 1200px;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          }
+          .user-details-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            background: #f8f9fa;
+          }
+          .user-info { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+          .user-name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 16px; }
+          .close-btn { background: none; border: none; cursor: pointer; color: #6b7280; padding: 4px; }
+          .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          }
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="user-details-overlay" onClick={onClose}>
       <div className="user-details-modal" onClick={(e) => e.stopPropagation()}>
@@ -998,7 +1122,7 @@ const UserDetailsModal = ({ user, onClose }) => {
           <div className="user-info">
             <span className="user-name">
               <FiUser className="icon" />
-              {user.name || 'Unknown User'}
+              {user.name || user.firstName || 'Unknown User'}
             </span>
             <span className="user-id" onClick={copyAccountId} title="Click to copy">
               {user.accountId}
@@ -1006,7 +1130,7 @@ const UserDetailsModal = ({ user, onClose }) => {
             </span>
             <span className="user-phone">
               <FiPhone className="icon" />
-              {user.mobile || '-'}
+              {user.mobile || user.phone || '-'}
             </span>
             <span className="user-datetime">
               <FiCalendar className="icon" />
