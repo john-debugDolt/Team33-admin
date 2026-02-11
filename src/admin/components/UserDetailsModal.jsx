@@ -84,6 +84,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
 
     fetchUserDetails();
   }, [userProp, accountIdProp]);
+
   const [walletData, setWalletData] = useState(null);
   const [transactions, setTransactions] = useState([]);
   const [betHistory, setBetHistory] = useState([]);
