@@ -230,16 +230,16 @@ const Commission = () => {
                   </td>
                 </tr>
               ) : (
-                earnings.map((earning) => (
-                  <tr key={earning.id || earning.earningId}>
+                earnings.map((earning, idx) => (
+                  <tr key={earning.id || earning.earningId || idx}>
                     <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                      {(earning.id || earning.earningId || '').slice(-10)}
+                      {String(earning.id || earning.earningId || '-').slice(-10)}
                     </td>
                     <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                      {earning.principalAccountId?.slice(-12) || '-'}
+                      {String(earning.principalAccountId || '-').slice(-12)}
                     </td>
                     <td style={{ fontFamily: 'monospace', fontSize: '11px' }}>
-                      {earning.referredAccountId?.slice(-12) || '-'}
+                      {String(earning.referredAccountId || '-').slice(-12)}
                     </td>
                     <td>
                       <span className={`badge ${getTypeBadge(earning.type)}`}>
