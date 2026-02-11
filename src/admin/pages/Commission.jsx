@@ -32,10 +32,47 @@ const Commission = () => {
   });
   const [saving, setSaving] = useState(false);
 
+  // Universal/Default commission settings
+  const [defaultSettings, setDefaultSettings] = useState(() => {
+    const saved = localStorage.getItem('commission_default_settings');
+    return saved ? JSON.parse(saved) : {
+      depositCommissionRate: 10, // 10%
+      depositCommissionMaxCount: 5,
+      playCommissionRate: 5, // 5%
+      playCommissionUntil: '', // empty = forever
+    };
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
+
   const handleAccountClick = (accountId) => {
     if (accountId && accountId !== '-') {
       setSelectedAccountId(accountId);
       setShowUserModal(true);
+    }
+  };
+
+  // Save universal/default settings
+  const saveDefaultSettings = async () => {
+    setSavingSettings(true);
+    try {
+      // Save to localStorage
+      localStorage.setItem('commission_default_settings', JSON.stringify(defaultSettings));
+
+      // Also save to a global config that the site frontend can read
+      // This creates/updates a config that will be used when new referrals are created
+      const configForFrontend = {
+        depositCommissionRate: parseFloat(defaultSettings.depositCommissionRate) / 100,
+        depositCommissionMaxCount: parseInt(defaultSettings.depositCommissionMaxCount) || 5,
+        playCommissionRate: parseFloat(defaultSettings.playCommissionRate) / 100,
+        playCommissionUntil: defaultSettings.playCommissionUntil || null,
+      };
+      localStorage.setItem('commission_config', JSON.stringify(configForFrontend));
+
+      alert('Default commission settings saved successfully!');
+    } catch (err) {
+      alert('Error saving settings: ' + err.message);
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -260,6 +297,12 @@ const Commission = () => {
       {/* Tab Navigation */}
       <div className="commission-tabs" style={{ marginBottom: '20px' }}>
         <button
+          className={`commission-tab ${activeTab === 'settings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('settings')}
+        >
+          <FiSettings /> Default Settings
+        </button>
+        <button
           className={`commission-tab ${activeTab === 'earnings' ? 'active' : ''}`}
           onClick={() => setActiveTab('earnings')}
         >
@@ -272,6 +315,116 @@ const Commission = () => {
           <FiUsers /> Referral Rates
         </button>
       </div>
+
+      {/* Universal Default Settings Tab */}
+      {activeTab === 'settings' && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div className="card-header">
+            <h3 className="card-title">
+              <FiSettings style={{ marginRight: '8px' }} />
+              Default Commission Settings
+            </h3>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
+              These settings apply to all new referrals created on the site
+            </p>
+          </div>
+          <div className="settings-form">
+            <div className="settings-grid">
+              <div className="setting-card">
+                <div className="setting-header">
+                  <FiPercent className="setting-icon deposit" />
+                  <h4>Deposit Commission Rate</h4>
+                </div>
+                <p className="setting-description">
+                  Percentage earned when referred player makes a deposit
+                </p>
+                <div className="setting-input-group">
+                  <input
+                    type="number"
+                    value={defaultSettings.depositCommissionRate}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, depositCommissionRate: e.target.value })}
+                    min="0"
+                    max="100"
+                    step="0.1"
+                  />
+                  <span className="input-suffix">%</span>
+                </div>
+              </div>
+
+              <div className="setting-card">
+                <div className="setting-header">
+                  <FiCreditCard className="setting-icon count" />
+                  <h4>Max Deposits for Commission</h4>
+                </div>
+                <p className="setting-description">
+                  Maximum number of deposits eligible for commission
+                </p>
+                <div className="setting-input-group">
+                  <input
+                    type="number"
+                    value={defaultSettings.depositCommissionMaxCount}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, depositCommissionMaxCount: e.target.value })}
+                    min="0"
+                    max="100"
+                  />
+                  <span className="input-suffix">deposits</span>
+                </div>
+              </div>
+
+              <div className="setting-card">
+                <div className="setting-header">
+                  <FiTrendingUp className="setting-icon play" />
+                  <h4>Play Commission Rate</h4>
+                </div>
+                <p className="setting-description">
+                  Percentage earned when referred player places bets
+                </p>
+                <div className="setting-input-group">
+                  <input
+                    type="number"
+                    value={defaultSettings.playCommissionRate}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, playCommissionRate: e.target.value })}
+                    min="0"
+                    max="100"
+                    step="0.1"
+                  />
+                  <span className="input-suffix">%</span>
+                </div>
+              </div>
+
+              <div className="setting-card">
+                <div className="setting-header">
+                  <FiClock className="setting-icon time" />
+                  <h4>Play Commission Duration</h4>
+                </div>
+                <p className="setting-description">
+                  End date for play commission (leave empty for forever)
+                </p>
+                <div className="setting-input-group">
+                  <input
+                    type="date"
+                    value={defaultSettings.playCommissionUntil}
+                    onChange={(e) => setDefaultSettings({ ...defaultSettings, playCommissionUntil: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-actions">
+              <button
+                className="btn btn-primary btn-large"
+                onClick={saveDefaultSettings}
+                disabled={savingSettings}
+              >
+                <FiSave /> {savingSettings ? 'Saving...' : 'Save Default Settings'}
+              </button>
+              <p className="settings-note">
+                These settings will be used when new referrals are created through the refer-a-friend feature
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Referrals Tab - Edit Commission Rates */}
       {activeTab === 'referrals' && (
@@ -728,6 +881,101 @@ const Commission = () => {
         }
         .btn-secondary:hover {
           background: #4b5563;
+        }
+        .settings-form {
+          padding: 24px;
+        }
+        .settings-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 20px;
+          margin-bottom: 24px;
+        }
+        .setting-card {
+          background: #f9fafb;
+          border-radius: 12px;
+          padding: 20px;
+          border: 1px solid #e5e7eb;
+        }
+        .setting-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 8px;
+        }
+        .setting-header h4 {
+          margin: 0;
+          font-size: 15px;
+          font-weight: 600;
+          color: #111827;
+        }
+        .setting-icon {
+          width: 36px;
+          height: 36px;
+          padding: 8px;
+          border-radius: 8px;
+        }
+        .setting-icon.deposit {
+          background: #f3e8ff;
+          color: #9333ea;
+        }
+        .setting-icon.count {
+          background: #dbeafe;
+          color: #2563eb;
+        }
+        .setting-icon.play {
+          background: #ccfbf1;
+          color: #0d9488;
+        }
+        .setting-icon.time {
+          background: #fef3c7;
+          color: #d97706;
+        }
+        .setting-description {
+          font-size: 13px;
+          color: #6b7280;
+          margin: 0 0 16px;
+        }
+        .setting-input-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .setting-input-group input {
+          flex: 1;
+          padding: 12px 16px;
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          font-size: 18px;
+          font-weight: 600;
+          color: #111827;
+        }
+        .setting-input-group input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+        }
+        .input-suffix {
+          font-size: 14px;
+          color: #6b7280;
+          font-weight: 500;
+        }
+        .settings-actions {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding-top: 16px;
+          border-top: 1px solid #e5e7eb;
+        }
+        .btn-large {
+          padding: 14px 32px;
+          font-size: 16px;
+        }
+        .settings-note {
+          font-size: 13px;
+          color: #6b7280;
+          margin: 0;
         }
       `}</style>
     </div>
