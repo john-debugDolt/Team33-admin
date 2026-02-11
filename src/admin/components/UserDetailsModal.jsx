@@ -184,12 +184,15 @@ const UserDetailsModal = ({ user, onClose }) => {
 
           case 'COMMISSION':
             // Fetch commission earnings, pending total, referrals, and referrer
-            const [commResult, pendingResult, referralsResult, referredByResult] = await Promise.all([
+            // Note: getReferralByReferred returns 404 if user wasn't referred - this is expected
+            const [commResult, pendingResult, referralsResult] = await Promise.all([
               getCommissionEarnings(user.accountId, commissionFilter),
               getPendingCommissionTotal(user.accountId),
-              getReferralsByPrincipal(user.accountId),
-              getReferralByReferred(user.accountId)
+              getReferralsByPrincipal(user.accountId)
             ]);
+
+            // Fetch referrer separately to handle 404 gracefully (user may not have a referrer)
+            const referredByResult = await getReferralByReferred(user.accountId).catch(() => ({ success: false }));
 
             if (commResult.success) {
               setCommissions(Array.isArray(commResult.data) ? commResult.data : []);
@@ -202,6 +205,8 @@ const UserDetailsModal = ({ user, onClose }) => {
             }
             if (referredByResult.success && referredByResult.data) {
               setReferredBy(referredByResult.data);
+            } else {
+              setReferredBy(null); // User was not referred by anyone
             }
             break;
 
