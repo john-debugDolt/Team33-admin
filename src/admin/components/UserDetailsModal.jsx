@@ -524,25 +524,88 @@ const UserDetailsModal = ({ user, onClose }) => {
         );
 
       case 'COMMISSION':
+        // Calculate totals from commission data
+        const totalEarnings = commissions.reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
+        const creditedTotal = commissions.filter(c => c.status === 'CREDITED').reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
+        const depositCommissions = commissions.filter(c => c.commissionType === 'DEPOSIT').reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
+        const playCommissions = commissions.filter(c => c.commissionType === 'PLAY').reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
+
         return (
           <div className="commission-section">
-            {/* Summary Cards */}
-            <div className="commission-summary">
+            {/* Enhanced Summary Cards */}
+            <div className="commission-summary-grid">
+              <div className="summary-card total">
+                <div className="card-icon">💰</div>
+                <div className="card-content">
+                  <label>Total Earnings</label>
+                  <span className="amount">${totalEarnings.toFixed(2)}</span>
+                </div>
+              </div>
               <div className="summary-card pending">
-                <label>Pending Commission</label>
-                <span className="amount">${pendingCommissionTotal.toFixed(2)}</span>
+                <div className="card-icon">⏳</div>
+                <div className="card-content">
+                  <label>Pending</label>
+                  <span className="amount">${pendingCommissionTotal.toFixed(2)}</span>
+                </div>
+              </div>
+              <div className="summary-card credited">
+                <div className="card-icon">✅</div>
+                <div className="card-content">
+                  <label>Credited</label>
+                  <span className="amount">${creditedTotal.toFixed(2)}</span>
+                </div>
               </div>
               <div className="summary-card referrals">
-                <label>Total Referrals</label>
-                <span className="count">{referrals.length}</span>
-              </div>
-              {referredBy && (
-                <div className="summary-card referred-by">
-                  <label>Referred By</label>
-                  <span className="referrer-id">{referredBy.principalAccountId?.substring(0, 15)}...</span>
+                <div className="card-icon">👥</div>
+                <div className="card-content">
+                  <label>Total Referrals</label>
+                  <span className="count">{referrals.length}</span>
                 </div>
-              )}
+              </div>
+              <div className="summary-card deposit-comm">
+                <div className="card-icon">📥</div>
+                <div className="card-content">
+                  <label>Deposit Commission</label>
+                  <span className="amount">${depositCommissions.toFixed(2)}</span>
+                </div>
+              </div>
+              <div className="summary-card play-comm">
+                <div className="card-icon">🎮</div>
+                <div className="card-content">
+                  <label>Play Commission</label>
+                  <span className="amount">${playCommissions.toFixed(2)}</span>
+                </div>
+              </div>
             </div>
+
+            {/* Referred By Info */}
+            {referredBy && (
+              <div className="referred-by-section">
+                <h4>📌 Referred By</h4>
+                <div className="referred-by-card">
+                  <div className="referred-by-row">
+                    <label>Referrer Account ID:</label>
+                    <span className="mono">{referredBy.principalAccountId}</span>
+                  </div>
+                  <div className="referred-by-row">
+                    <label>Referral Code Used:</label>
+                    <span>{referredBy.referralCode || 'N/A'}</span>
+                  </div>
+                  <div className="referred-by-row">
+                    <label>Deposit Rate:</label>
+                    <span>{((referredBy.depositCommissionRate || 0) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="referred-by-row">
+                    <label>Play Rate:</label>
+                    <span>{((referredBy.playCommissionRate || 0) * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="referred-by-row">
+                    <label>Since:</label>
+                    <span>{formatDateTime(referredBy.createdAt)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Filter Controls */}
             <div className="commission-filters">
@@ -567,30 +630,36 @@ const UserDetailsModal = ({ user, onClose }) => {
               </select>
             </div>
 
-            {/* Referrals Section */}
+            {/* Referrals Section - Enhanced */}
             {referrals.length > 0 && (
               <div className="referrals-section">
-                <h4>Referred Players ({referrals.length})</h4>
+                <h4>👥 Referred Players ({referrals.length})</h4>
                 <table className="data-table compact">
                   <thead>
                     <tr>
-                      <th>Referred Account</th>
-                      <th>Code</th>
+                      <th>Referred Account ID</th>
+                      <th>Referral Code</th>
                       <th>Deposit Rate</th>
+                      <th>Max Deposits</th>
                       <th>Play Rate</th>
+                      <th>Play Until</th>
+                      <th>Created</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {referrals.map((ref, idx) => (
                       <tr key={ref.id || idx}>
-                        <td className="mono small">{ref.referredAccountId?.substring(0, 15)}...</td>
-                        <td>{ref.referralCode || '-'}</td>
-                        <td>{((ref.depositCommissionRate || 0) * 100).toFixed(1)}%</td>
-                        <td>{((ref.playCommissionRate || 0) * 100).toFixed(1)}%</td>
+                        <td className="mono" style={{fontSize: '11px'}}>{ref.referredAccountId}</td>
+                        <td><code style={{background: '#f3f4f6', padding: '2px 6px', borderRadius: '4px'}}>{ref.referralCode || '-'}</code></td>
+                        <td style={{fontWeight: 600, color: '#16a34a'}}>{((ref.depositCommissionRate || 0) * 100).toFixed(1)}%</td>
+                        <td>{ref.depositCommissionMaxCount || 1}</td>
+                        <td style={{fontWeight: 600, color: '#2563eb'}}>{((ref.playCommissionRate || 0) * 100).toFixed(2)}%</td>
+                        <td>{ref.playCommissionUntil ? formatDateTime(ref.playCommissionUntil) : 'Forever'}</td>
+                        <td style={{fontSize: '11px', color: '#6b7280'}}>{formatDateTime(ref.createdAt)}</td>
                         <td>
-                          <span className={`status-badge ${ref.isActive ? 'active' : 'inactive'}`}>
-                            {ref.isActive ? 'Active' : 'Inactive'}
+                          <span className={`status-badge ${ref.isActive !== false ? 'active' : 'inactive'}`}>
+                            {ref.isActive !== false ? 'Active' : 'Inactive'}
                           </span>
                         </td>
                       </tr>
@@ -600,18 +669,20 @@ const UserDetailsModal = ({ user, onClose }) => {
               </div>
             )}
 
-            {/* Commission Earnings */}
+            {/* Commission Earnings - Enhanced */}
             <div className="earnings-section">
-              <h4>Commission Earnings ({commissions.length})</h4>
+              <h4>💵 Commission Earnings ({commissions.length})</h4>
               {commissions.length === 0 ? (
                 <div className="empty-state">No commission earnings found</div>
               ) : (
                 <table className="data-table compact">
                   <thead>
                     <tr>
+                      <th>Earning ID</th>
                       <th>Date</th>
                       <th>Type</th>
                       <th>Referred Account</th>
+                      <th>Source Txn</th>
                       <th>Source Amount</th>
                       <th>Rate</th>
                       <th>Commission</th>
@@ -620,20 +691,22 @@ const UserDetailsModal = ({ user, onClose }) => {
                   </thead>
                   <tbody>
                     {commissions.map((comm, idx) => (
-                      <tr key={comm.id || idx}>
-                        <td>{formatDateTime(comm.createdAt)}</td>
+                      <tr key={comm.id || comm.earningId || idx}>
+                        <td className="mono" style={{fontSize: '10px', color: '#6b7280'}}>{(comm.id || comm.earningId || '').slice(-12)}</td>
+                        <td style={{fontSize: '11px'}}>{formatDateTime(comm.createdAt || comm.earnedAt)}</td>
                         <td>
-                          <span className={`type-badge ${comm.commissionType?.toLowerCase()}`}>
-                            {comm.commissionType || 'PLAY'}
+                          <span className={`type-badge ${(comm.commissionType || comm.type || 'PLAY').toLowerCase()}`}>
+                            {comm.commissionType || comm.type || 'PLAY'}
                           </span>
                         </td>
-                        <td className="mono small">{comm.referredAccountId?.substring(0, 12)}...</td>
+                        <td className="mono" style={{fontSize: '10px'}}>{comm.referredAccountId}</td>
+                        <td className="mono" style={{fontSize: '10px', color: '#6b7280'}}>{(comm.sourceTransactionId || comm.transactionId || '-').slice(-10)}</td>
                         <td>${parseFloat(comm.sourceAmount || 0).toFixed(2)}</td>
-                        <td>{((comm.commissionRate || 0) * 100).toFixed(1)}%</td>
-                        <td className="text-success">+${parseFloat(comm.commissionAmount || 0).toFixed(2)}</td>
+                        <td style={{fontWeight: 500}}>{((comm.commissionRate || 0) * 100).toFixed(2)}%</td>
+                        <td style={{fontWeight: 700, color: '#16a34a'}}>+${parseFloat(comm.commissionAmount || comm.amount || 0).toFixed(2)}</td>
                         <td>
-                          <span className={`status-badge ${comm.status?.toLowerCase()}`}>
-                            {comm.status}
+                          <span className={`status-badge ${(comm.status || '').toLowerCase()}`}>
+                            {comm.status || 'UNKNOWN'}
                           </span>
                         </td>
                       </tr>
@@ -1874,6 +1947,133 @@ const UserDetailsModal = ({ user, onClose }) => {
           .message-bubble {
             max-width: 85%;
           }
+        }
+
+        /* Commission Section Enhanced Styles */
+        .commission-summary-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .commission-summary-grid .summary-card {
+          background: #fff;
+          border: 1px solid #e5e7eb;
+          border-radius: 12px;
+          padding: 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+
+        .commission-summary-grid .card-icon {
+          font-size: 24px;
+        }
+
+        .commission-summary-grid .card-content {
+          display: flex;
+          flex-direction: column;
+        }
+
+        .commission-summary-grid .card-content label {
+          font-size: 11px;
+          color: #6b7280;
+          margin-bottom: 2px;
+        }
+
+        .commission-summary-grid .card-content .amount {
+          font-size: 18px;
+          font-weight: 700;
+          color: #111827;
+        }
+
+        .commission-summary-grid .card-content .count {
+          font-size: 20px;
+          font-weight: 700;
+          color: #111827;
+        }
+
+        .commission-summary-grid .summary-card.total {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          border-color: #86efac;
+        }
+
+        .commission-summary-grid .summary-card.pending {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          border-color: #fcd34d;
+        }
+
+        .commission-summary-grid .summary-card.credited {
+          background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+          border-color: #93c5fd;
+        }
+
+        .referred-by-section {
+          margin-bottom: 20px;
+        }
+
+        .referred-by-section h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          color: #374151;
+        }
+
+        .referred-by-card {
+          background: linear-gradient(135deg, #fef3c7 0%, #fff7ed 100%);
+          border: 1px solid #fed7aa;
+          border-radius: 10px;
+          padding: 16px;
+        }
+
+        .referred-by-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+
+        .referred-by-row:last-child {
+          border-bottom: none;
+        }
+
+        .referred-by-row label {
+          color: #78716c;
+          font-size: 13px;
+        }
+
+        .referred-by-row span {
+          font-weight: 500;
+          color: #1c1917;
+        }
+
+        .referred-by-row span.mono {
+          font-family: 'Monaco', monospace;
+          font-size: 11px;
+        }
+
+        .referrals-section, .earnings-section {
+          margin-bottom: 24px;
+        }
+
+        .referrals-section h4, .earnings-section h4 {
+          margin: 0 0 12px 0;
+          font-size: 14px;
+          color: #374151;
+        }
+
+        .commission-filters {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 16px;
+        }
+
+        .commission-filters .filter-select {
+          padding: 8px 12px;
+          border: 1px solid #d1d5db;
+          border-radius: 6px;
+          font-size: 13px;
+          min-width: 130px;
         }
       `}</style>
     </div>
