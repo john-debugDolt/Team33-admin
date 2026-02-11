@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock, FiEdit2, FiSave, FiX, FiUsers, FiSettings } from 'react-icons/fi';
-import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions, getAllReferrals, updateReferral } from '../../services/apiService';
+import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock, FiEdit2, FiSave, FiX, FiUsers, FiSettings, FiSearch } from 'react-icons/fi';
+import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions, getAllReferrals, updateReferral, getReferralsByPrincipal } from '../../services/apiService';
 import UserDetailsModal from '../components/UserDetailsModal';
 
 const Commission = () => {
@@ -44,6 +44,10 @@ const Commission = () => {
   });
   const [savingSettings, setSavingSettings] = useState(false);
 
+  // Search for referrals by account ID
+  const [searchAccountId, setSearchAccountId] = useState('');
+  const [searching, setSearching] = useState(false);
+
   const handleAccountClick = (accountId) => {
     if (accountId && accountId !== '-') {
       setSelectedAccountId(accountId);
@@ -86,6 +90,33 @@ const Commission = () => {
       }
     } catch (err) {
       console.warn('Error fetching referrals:', err.message);
+    }
+  };
+
+  // Search referrals by account ID (principal)
+  const searchReferrals = async () => {
+    if (!searchAccountId.trim()) {
+      fetchReferrals(); // If empty, fetch all
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const result = await getReferralsByPrincipal(searchAccountId.trim());
+      if (result.success) {
+        const data = Array.isArray(result.data) ? result.data : (result.data?.content || []);
+        setReferrals(data);
+        if (data.length === 0) {
+          alert('No referrals found for this account ID');
+        }
+      } else {
+        alert(result.error || 'Failed to search referrals');
+      }
+    } catch (err) {
+      console.warn('Error searching referrals:', err.message);
+      alert('Error searching: ' + err.message);
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -429,11 +460,45 @@ const Commission = () => {
       {/* Referrals Tab - Edit Commission Rates */}
       {activeTab === 'referrals' && (
         <div className="card" style={{ marginBottom: '20px' }}>
-          <div className="card-header">
-            <h3 className="card-title">Referral Commission Rates</h3>
-            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
-              Edit commission rates for each referral relationship
-            </p>
+          <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h3 className="card-title">Referral Commission Rates</h3>
+              <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
+                Search for a user to edit their commission rates
+              </p>
+            </div>
+            <div className="search-box" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Enter Account ID (e.g., ACC123456789)"
+                value={searchAccountId}
+                onChange={(e) => setSearchAccountId(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchReferrals()}
+                className="search-input"
+                style={{
+                  padding: '10px 14px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  width: '280px',
+                }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={searchReferrals}
+                disabled={searching}
+                style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <FiSearch /> {searching ? 'Searching...' : 'Search'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => { setSearchAccountId(''); fetchReferrals(); }}
+                style={{ padding: '10px 14px' }}
+              >
+                Clear
+              </button>
+            </div>
           </div>
           <div className="table-wrapper">
             <table className="data-table">
