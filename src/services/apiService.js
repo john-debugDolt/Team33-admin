@@ -363,7 +363,7 @@ export const createReferral = (referralData) =>
  * @param {boolean} config.isActive - Whether referral is active
  */
 export const updateReferral = (referralId, config) =>
-  apiRequest(`/api/wallets/commissions/referrals/${referralId}`, {
+  apiRequest(`/api/admin/commissions/referrals/${referralId}`, {
     method: 'PUT',
     body: JSON.stringify(config),
   });
