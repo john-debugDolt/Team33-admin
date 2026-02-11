@@ -250,8 +250,9 @@ const Commission = () => {
                         className="account-link"
                         onClick={() => handleAccountClick(earning.principalAccountId)}
                         disabled={!earning.principalAccountId}
+                        title={earning.principalAccountId || ''}
                       >
-                        {String(earning.principalAccountId || '-').slice(-12)}
+                        {earning.principalAccountId ? `ACC...${String(earning.principalAccountId).slice(-8)}` : '-'}
                       </button>
                     </td>
                     <td>
@@ -259,8 +260,9 @@ const Commission = () => {
                         className="account-link"
                         onClick={() => handleAccountClick(earning.referredAccountId)}
                         disabled={!earning.referredAccountId}
+                        title={earning.referredAccountId || ''}
                       >
-                        {String(earning.referredAccountId || '-').slice(-12)}
+                        {earning.referredAccountId ? `ACC...${String(earning.referredAccountId).slice(-8)}` : '-'}
                       </button>
                     </td>
                     <td>
