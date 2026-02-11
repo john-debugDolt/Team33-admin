@@ -23,30 +23,61 @@ const Commission = () => {
       if (statusFilter) params.status = statusFilter;
       if (typeFilter) params.type = typeFilter;
 
-      const [earningsRes, statsRes] = await Promise.all([
-        getAllCommissionEarnings(params),
-        getCommissionStats(),
-      ]);
-
-      if (earningsRes.success && Array.isArray(earningsRes.data)) {
-        setEarnings(earningsRes.data);
-      } else if (earningsRes.success && earningsRes.data?.earnings) {
-        setEarnings(earningsRes.data.earnings);
-      } else {
-        setEarnings([]);
+      // Fetch earnings - handle errors gracefully
+      let earningsData = [];
+      try {
+        const earningsRes = await getAllCommissionEarnings(params);
+        if (earningsRes.success && Array.isArray(earningsRes.data)) {
+          earningsData = earningsRes.data;
+        } else if (earningsRes.success && earningsRes.data?.earnings) {
+          earningsData = earningsRes.data.earnings;
+        } else if (earningsRes.success && earningsRes.data?.content) {
+          earningsData = earningsRes.data.content;
+        }
+      } catch (err) {
+        console.warn('Commission earnings endpoint not available:', err.message);
       }
+      setEarnings(earningsData);
 
-      if (statsRes.success && statsRes.data) {
-        setStats({
-          totalEarnings: statsRes.data.totalEarnings || 0,
-          pendingTotal: statsRes.data.pendingTotal || 0,
-          creditedTotal: statsRes.data.creditedTotal || 0,
-          depositCommissions: statsRes.data.depositCommissions || 0,
-          playCommissions: statsRes.data.playCommissions || 0,
-        });
+      // Calculate stats from earnings data (since stats endpoint may not exist)
+      const calculatedStats = {
+        totalEarnings: 0,
+        pendingTotal: 0,
+        creditedTotal: 0,
+        depositCommissions: 0,
+        playCommissions: 0,
+      };
+
+      earningsData.forEach((e) => {
+        const amount = parseFloat(e.commissionAmount || e.amount || 0);
+        calculatedStats.totalEarnings += amount;
+        if (e.status === 'PENDING') calculatedStats.pendingTotal += amount;
+        if (e.status === 'CREDITED') calculatedStats.creditedTotal += amount;
+        if (e.type === 'DEPOSIT') calculatedStats.depositCommissions += amount;
+        if (e.type === 'PLAY') calculatedStats.playCommissions += amount;
+      });
+
+      // Try to get stats from API, fallback to calculated
+      try {
+        const statsRes = await getCommissionStats();
+        if (statsRes.success && statsRes.data) {
+          setStats({
+            totalEarnings: statsRes.data.totalEarnings || calculatedStats.totalEarnings,
+            pendingTotal: statsRes.data.pendingTotal || calculatedStats.pendingTotal,
+            creditedTotal: statsRes.data.creditedTotal || calculatedStats.creditedTotal,
+            depositCommissions: statsRes.data.depositCommissions || calculatedStats.depositCommissions,
+            playCommissions: statsRes.data.playCommissions || calculatedStats.playCommissions,
+          });
+        } else {
+          setStats(calculatedStats);
+        }
+      } catch (err) {
+        console.warn('Commission stats endpoint not available, using calculated:', err.message);
+        setStats(calculatedStats);
       }
     } catch (error) {
       console.error('Error fetching commission data:', error);
+      setEarnings([]);
     } finally {
       setLoading(false);
     }
