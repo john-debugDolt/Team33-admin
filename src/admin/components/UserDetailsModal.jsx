@@ -182,6 +182,11 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
   // Fetch data when tab changes
   useEffect(() => {
     const fetchTabData = async () => {
+      // Don't fetch if user is not loaded yet
+      if (!user || !user.accountId) {
+        return;
+      }
+
       setLoading(true);
 
       try {
@@ -373,7 +378,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
     };
 
     fetchTabData();
-  }, [activeTab, user.accountId]);
+  }, [activeTab, user?.accountId]);
 
   // Render tab content based on active tab
   const renderTabContent = () => {
