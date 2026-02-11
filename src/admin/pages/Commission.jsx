@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock } from 'react-icons/fi';
-import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions } from '../../services/apiService';
+import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock, FiEdit2, FiSave, FiX, FiUsers, FiSettings } from 'react-icons/fi';
+import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions, getAllReferrals, updateReferral } from '../../services/apiService';
 import UserDetailsModal from '../components/UserDetailsModal';
 
 const Commission = () => {
+  const [activeTab, setActiveTab] = useState('earnings'); // 'earnings', 'referrals', 'settings'
   const [earnings, setEarnings] = useState([]);
+  const [referrals, setReferrals] = useState([]);
   const [stats, setStats] = useState({
     totalEarnings: 0,
     pendingTotal: 0,
@@ -19,10 +21,84 @@ const Commission = () => {
   const [selectedAccountId, setSelectedAccountId] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
 
+  // Editing state for referrals
+  const [editingReferral, setEditingReferral] = useState(null);
+  const [editForm, setEditForm] = useState({
+    depositCommissionRate: 0,
+    depositCommissionMaxCount: 0,
+    playCommissionRate: 0,
+    playCommissionUntil: '',
+    isActive: true,
+  });
+  const [saving, setSaving] = useState(false);
+
   const handleAccountClick = (accountId) => {
     if (accountId && accountId !== '-') {
       setSelectedAccountId(accountId);
       setShowUserModal(true);
+    }
+  };
+
+  // Fetch referrals
+  const fetchReferrals = async () => {
+    try {
+      const result = await getAllReferrals();
+      if (result.success) {
+        const data = Array.isArray(result.data) ? result.data : (result.data?.content || []);
+        setReferrals(data);
+      }
+    } catch (err) {
+      console.warn('Error fetching referrals:', err.message);
+    }
+  };
+
+  // Start editing a referral
+  const startEditReferral = (referral) => {
+    setEditingReferral(referral.referralId || referral.id);
+    setEditForm({
+      depositCommissionRate: (referral.depositCommissionRate || 0) * 100,
+      depositCommissionMaxCount: referral.depositCommissionMaxCount || 0,
+      playCommissionRate: (referral.playCommissionRate || 0) * 100,
+      playCommissionUntil: referral.playCommissionUntil ? referral.playCommissionUntil.split('T')[0] : '',
+      isActive: referral.isActive !== false,
+    });
+  };
+
+  // Cancel editing
+  const cancelEdit = () => {
+    setEditingReferral(null);
+    setEditForm({
+      depositCommissionRate: 0,
+      depositCommissionMaxCount: 0,
+      playCommissionRate: 0,
+      playCommissionUntil: '',
+      isActive: true,
+    });
+  };
+
+  // Save referral changes
+  const saveReferral = async (referralId) => {
+    setSaving(true);
+    try {
+      const result = await updateReferral(referralId, {
+        depositCommissionRate: parseFloat(editForm.depositCommissionRate) / 100,
+        depositCommissionMaxCount: parseInt(editForm.depositCommissionMaxCount) || 0,
+        playCommissionRate: parseFloat(editForm.playCommissionRate) / 100,
+        playCommissionUntil: editForm.playCommissionUntil || null,
+        isActive: editForm.isActive,
+      });
+
+      if (result.success) {
+        alert('Commission rates updated successfully!');
+        fetchReferrals();
+        cancelEdit();
+      } else {
+        alert(result.error || 'Failed to update commission rates');
+      }
+    } catch (err) {
+      alert('Error updating referral: ' + err.message);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -95,6 +171,7 @@ const Commission = () => {
 
   useEffect(() => {
     fetchData();
+    fetchReferrals();
   }, [statusFilter, typeFilter]);
 
   const handleCreditCommission = async (accountId) => {
@@ -162,7 +239,7 @@ const Commission = () => {
     <div className="commission-page">
       <div className="page-header">
         <h1 className="page-title">Commission Management</h1>
-        <button className="btn btn-primary" onClick={fetchData} disabled={loading}>
+        <button className="btn btn-primary" onClick={() => { fetchData(); fetchReferrals(); }} disabled={loading}>
           <FiRefreshCw className={loading ? 'spin' : ''} /> Refresh
         </button>
       </div>
@@ -180,31 +257,225 @@ const Commission = () => {
         ))}
       </div>
 
-      {/* Filters */}
-      <div className="card" style={{ marginBottom: '20px' }}>
-        <div className="filters-row">
-          <div className="filter-group">
-            <label>Status:</label>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All Status</option>
-              <option value="PENDING">Pending</option>
-              <option value="CREDITED">Credited</option>
-              <option value="CANCELLED">Cancelled</option>
-            </select>
-          </div>
-          <div className="filter-group">
-            <label>Type:</label>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="">All Types</option>
-              <option value="DEPOSIT">Deposit Commission</option>
-              <option value="PLAY">Play Commission</option>
-            </select>
-          </div>
-        </div>
+      {/* Tab Navigation */}
+      <div className="commission-tabs" style={{ marginBottom: '20px' }}>
+        <button
+          className={`commission-tab ${activeTab === 'earnings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('earnings')}
+        >
+          <FiDollarSign /> Commission Earnings
+        </button>
+        <button
+          className={`commission-tab ${activeTab === 'referrals' ? 'active' : ''}`}
+          onClick={() => setActiveTab('referrals')}
+        >
+          <FiUsers /> Referral Rates
+        </button>
       </div>
 
-      {/* Commission History Table */}
-      <div className="card">
+      {/* Referrals Tab - Edit Commission Rates */}
+      {activeTab === 'referrals' && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div className="card-header">
+            <h3 className="card-title">Referral Commission Rates</h3>
+            <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
+              Edit commission rates for each referral relationship
+            </p>
+          </div>
+          <div className="table-wrapper">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Referrer</th>
+                  <th>Referred</th>
+                  <th>Deposit Rate</th>
+                  <th>Max Deposits</th>
+                  <th>Play Rate</th>
+                  <th>Play Until</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {referrals.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                      <FiInbox size={32} style={{ marginBottom: '10px', opacity: 0.5 }} />
+                      <p style={{ margin: 0 }}>No referrals found.</p>
+                    </td>
+                  </tr>
+                ) : (
+                  referrals.map((ref, idx) => {
+                    const refId = ref.referralId || ref.id;
+                    const isEditing = editingReferral === refId;
+
+                    return (
+                      <tr key={refId || idx}>
+                        <td>
+                          <button
+                            className="account-link"
+                            onClick={() => handleAccountClick(ref.principalAccountId)}
+                            title={ref.principalAccountId || ''}
+                          >
+                            {ref.principalAccountId ? `ACC...${String(ref.principalAccountId).slice(-8)}` : '-'}
+                          </button>
+                        </td>
+                        <td>
+                          <button
+                            className="account-link"
+                            onClick={() => handleAccountClick(ref.referredAccountId)}
+                            title={ref.referredAccountId || ''}
+                          >
+                            {ref.referredAccountId ? `ACC...${String(ref.referredAccountId).slice(-8)}` : '-'}
+                          </button>
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              className="edit-input"
+                              value={editForm.depositCommissionRate}
+                              onChange={(e) => setEditForm({ ...editForm, depositCommissionRate: e.target.value })}
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              style={{ width: '70px' }}
+                            />
+                          ) : (
+                            <span style={{ fontWeight: 600, color: '#9333ea' }}>
+                              {((ref.depositCommissionRate || 0) * 100).toFixed(1)}%
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              className="edit-input"
+                              value={editForm.depositCommissionMaxCount}
+                              onChange={(e) => setEditForm({ ...editForm, depositCommissionMaxCount: e.target.value })}
+                              min="0"
+                              style={{ width: '60px' }}
+                            />
+                          ) : (
+                            ref.depositCommissionMaxCount || '∞'
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              className="edit-input"
+                              value={editForm.playCommissionRate}
+                              onChange={(e) => setEditForm({ ...editForm, playCommissionRate: e.target.value })}
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              style={{ width: '70px' }}
+                            />
+                          ) : (
+                            <span style={{ fontWeight: 600, color: '#0d9488' }}>
+                              {((ref.playCommissionRate || 0) * 100).toFixed(1)}%
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <input
+                              type="date"
+                              className="edit-input"
+                              value={editForm.playCommissionUntil}
+                              onChange={(e) => setEditForm({ ...editForm, playCommissionUntil: e.target.value })}
+                              style={{ width: '130px' }}
+                            />
+                          ) : (
+                            ref.playCommissionUntil ? new Date(ref.playCommissionUntil).toLocaleDateString() : 'Forever'
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <select
+                              className="edit-input"
+                              value={editForm.isActive ? 'active' : 'inactive'}
+                              onChange={(e) => setEditForm({ ...editForm, isActive: e.target.value === 'active' })}
+                              style={{ width: '90px' }}
+                            >
+                              <option value="active">Active</option>
+                              <option value="inactive">Inactive</option>
+                            </select>
+                          ) : (
+                            <span className={`badge ${ref.isActive !== false ? 'badge-success' : 'badge-danger'}`}>
+                              {ref.isActive !== false ? 'Active' : 'Inactive'}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          {isEditing ? (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                className="btn btn-success"
+                                style={{ padding: '4px 8px', fontSize: '11px' }}
+                                onClick={() => saveReferral(refId)}
+                                disabled={saving}
+                              >
+                                <FiSave /> {saving ? 'Saving...' : 'Save'}
+                              </button>
+                              <button
+                                className="btn btn-secondary"
+                                style={{ padding: '4px 8px', fontSize: '11px' }}
+                                onClick={cancelEdit}
+                              >
+                                <FiX />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              className="btn btn-primary"
+                              style={{ padding: '4px 10px', fontSize: '11px' }}
+                              onClick={() => startEditReferral(ref)}
+                            >
+                              <FiEdit2 /> Edit
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Earnings Tab */}
+      {activeTab === 'earnings' && (
+        <>
+          {/* Filters */}
+          <div className="card" style={{ marginBottom: '20px' }}>
+            <div className="filters-row">
+              <div className="filter-group">
+                <label>Status:</label>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="">All Status</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="CREDITED">Credited</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+              </div>
+              <div className="filter-group">
+                <label>Type:</label>
+                <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+                  <option value="">All Types</option>
+                  <option value="DEPOSIT">Deposit Commission</option>
+                  <option value="PLAY">Play Commission</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Commission History Table */}
+          <div className="card">
         <div className="card-header">
           <h3 className="card-title">Commission Earnings</h3>
         </div>
@@ -302,6 +573,8 @@ const Commission = () => {
           </table>
         </div>
       </div>
+        </>
+      )}
 
       {/* User Details Modal */}
       {showUserModal && selectedAccountId && (
@@ -403,6 +676,58 @@ const Commission = () => {
           font-size: 20px;
           font-weight: 700;
           color: #111827;
+        }
+        .commission-tabs {
+          display: flex;
+          gap: 8px;
+          background: white;
+          padding: 8px;
+          border-radius: 12px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .commission-tab {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 20px;
+          border: none;
+          background: transparent;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #6b7280;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .commission-tab:hover {
+          background: #f3f4f6;
+          color: #374151;
+        }
+        .commission-tab.active {
+          background: #3b82f6;
+          color: white;
+        }
+        .edit-input {
+          padding: 6px 8px;
+          border: 1px solid #d1d5db;
+          border-radius: 4px;
+          font-size: 12px;
+        }
+        .edit-input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+        }
+        .btn svg {
+          width: 14px;
+          height: 14px;
+        }
+        .btn-secondary {
+          background: #6b7280;
+          color: white;
+        }
+        .btn-secondary:hover {
+          background: #4b5563;
         }
       `}</style>
     </div>
