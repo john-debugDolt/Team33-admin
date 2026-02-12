@@ -30,10 +30,20 @@ const ChatView = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // Parse date string - handles both UTC (with Z) and naive timestamps (treat as UTC)
+  const parseDate = (dateString) => {
+    if (!dateString) return null;
+    // If no timezone indicator, treat as UTC by appending Z
+    const normalized = dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('-', 10)
+      ? dateString
+      : dateString + 'Z';
+    return new Date(normalized);
+  };
+
   // Format time
   const formatTime = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
+    if (!date) return '';
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -43,8 +53,8 @@ const ChatView = () => {
 
   // Format date for message groups
   const formatDate = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
+    if (!date) return '';
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);

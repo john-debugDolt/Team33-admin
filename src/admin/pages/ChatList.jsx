@@ -35,10 +35,20 @@ const ChatList = () => {
     }
   };
 
+  // Parse date - treat naive timestamps (without timezone) as UTC
+  const parseDate = (dateString) => {
+    if (!dateString) return null;
+    // If no timezone indicator, treat as UTC by appending Z
+    const normalized = dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('-', 10)
+      ? dateString
+      : dateString + 'Z';
+    return new Date(normalized);
+  };
+
   // Format time ago
   const formatTimeAgo = (dateString) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
+    const date = parseDate(dateString);
+    if (!date) return '';
     const now = new Date();
     const seconds = Math.floor((now - date) / 1000);
 

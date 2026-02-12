@@ -4,8 +4,8 @@
  * Backend endpoints are now public (no auth required)
  */
 
-// API base - call accounts.team33.mx directly
-const API_BASE = 'https://accounts.team33.mx';
+// API base - call api.team33.mx (admin service with JWT auth)
+const API_BASE = 'https://api.team33.mx';
 
 // LocalStorage keys for withdrawals (no API yet)
 const PENDING_TRANSACTIONS_KEY = 'admin_pending_transactions';

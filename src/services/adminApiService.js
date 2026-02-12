@@ -3,8 +3,8 @@
  * Backend endpoints are now public (no auth required)
  */
 
-// API base - call accounts.team33.mx directly
-const ADMIN_API_BASE = 'https://accounts.team33.mx/api/admin';
+// API base - call api.team33.mx (admin service with JWT auth)
+const ADMIN_API_BASE = 'https://api.team33.mx/api/admin';
 
 class AdminApiService {
   /**

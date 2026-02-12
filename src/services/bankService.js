@@ -1,7 +1,7 @@
 // Bank Service - Fetch bank details for deposits with rotation logic
 
-// API base - call accounts.team33.mx directly
-const API_BASE = 'https://accounts.team33.mx';
+// API base - call api.team33.mx (admin service with JWT auth)
+const API_BASE = 'https://api.team33.mx';
 
 const ROTATION_THRESHOLD = 3; // Switch bank after 3 deposits
 const ROTATION_KEY = 'team33_bank_rotation';

@@ -2,24 +2,46 @@
  * Admin Chat Service
  * Handles chat functionality for admin/agent panel
  *
+ * Base URL: https://api.team33.mx (admin-service)
+ * Authentication: All endpoints require a valid Keycloak JWT token with ADMIN or STAFF role.
+ *
  * API Endpoints:
  * - GET /api/chat/sessions - Get all chat sessions (admin)
  * - GET /api/chat/sessions/{sessionId} - Get session details
+ * - GET /api/chat/queue - Get waiting sessions (status = WAITING)
  * - GET /api/chat/sessions/{sessionId}/messages - Get messages
  * - POST /api/chat/sessions/{sessionId}/messages - Send message as AGENT
+ * - POST /api/chat/sessions/{sessionId}/assign?agentId={agentId} - Assign agent to session
  * - POST /api/chat/sessions/{sessionId}/close - Close session
- * - POST /api/chat/sessions/{sessionId}/read?senderType=USER - Mark user messages as read
  *
  * Chat history is fetched from the backend API and persists until manually deleted
  */
 
 import { chatStorageService } from '../../services/chatStorageService';
 
-const CHAT_API_BASE = 'https://accounts.team33.mx';
-const BACKEND_HOST = 'accounts.team33.mx';
+const CHAT_API_BASE = 'https://api.team33.mx';
+const BACKEND_HOST = 'api.team33.mx';
 // WebSocket: use wss:// for secure connections
 const isSecure = typeof window !== 'undefined' && window.location.protocol === 'https:';
 const CHAT_WS_BASE = isSecure ? `wss://${BACKEND_HOST}` : `ws://${BACKEND_HOST}`;
+
+// Get JWT token from localStorage (set by keycloakService)
+const getAuthToken = () => {
+  // Admin token is stored as 'team33_admin_token' by keycloakService
+  return localStorage.getItem('team33_admin_token');
+};
+
+// Get auth headers for API requests
+const getAuthHeaders = () => {
+  const token = getAuthToken();
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+};
 
 class AdminChatService {
   constructor() {
@@ -45,7 +67,8 @@ class AdminChatService {
 
   /**
    * Get all chat sessions for admin
-   * Fetches from backend API - all sessions persist until manually deleted
+   * GET /api/chat/sessions
+   * Requires: Keycloak JWT with ADMIN or STAFF role
    */
   async getAllSessions(status = null) {
     try {
@@ -54,7 +77,10 @@ class AdminChatService {
         ? `${CHAT_API_BASE}/api/chat/sessions?status=${status}`
         : `${CHAT_API_BASE}/api/chat/sessions`;
 
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -104,9 +130,28 @@ class AdminChatService {
 
   /**
    * Get waiting sessions (unassigned)
+   * GET /api/chat/queue
+   * Returns sessions waiting for an agent (status = WAITING)
    */
   async getWaitingSessions() {
-    return this.getAllSessions('WAITING');
+    try {
+      const response = await fetch(`${CHAT_API_BASE}/api/chat/queue`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const sessions = Array.isArray(data) ? data : (data.sessions || data.data || []);
+        return { success: true, sessions, source: 'api' };
+      }
+
+      // Fallback to getAllSessions with WAITING status
+      return this.getAllSessions('WAITING');
+    } catch (error) {
+      console.error('Failed to fetch queue:', error);
+      return this.getAllSessions('WAITING');
+    }
   }
 
   /**
@@ -119,6 +164,7 @@ class AdminChatService {
   /**
    * Get session details
    * GET /api/chat/sessions/{sessionId}
+   * Requires: Keycloak JWT with ADMIN or STAFF role
    */
   async getSession(sessionId) {
     if (!sessionId) {
@@ -126,7 +172,10 @@ class AdminChatService {
     }
 
     try {
-      const response = await fetch(`${CHAT_API_BASE}/api/chat/sessions/${sessionId}`);
+      const response = await fetch(`${CHAT_API_BASE}/api/chat/sessions/${sessionId}`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
 
       if (response.status === 404) {
         return { success: false, error: 'Session not found' };
@@ -147,6 +196,7 @@ class AdminChatService {
   /**
    * Get messages for a session
    * GET /api/chat/sessions/{sessionId}/messages
+   * Requires: Keycloak JWT with ADMIN or STAFF role
    * Falls back to localStorage if API fails
    */
   async getMessages(sessionId) {
@@ -155,7 +205,10 @@ class AdminChatService {
     }
 
     try {
-      const response = await fetch(`${CHAT_API_BASE}/api/chat/sessions/${sessionId}/messages`);
+      const response = await fetch(`${CHAT_API_BASE}/api/chat/sessions/${sessionId}/messages`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
       const data = await response.json();
 
       if (response.ok) {
@@ -216,9 +269,7 @@ class AdminChatService {
     try {
       const response = await fetch(`${CHAT_API_BASE}/api/chat/sessions/${sessionId}/messages`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(messageBody),
       });
 
@@ -239,12 +290,50 @@ class AdminChatService {
   }
 
   /**
+   * Assign agent to a session
+   * POST /api/chat/sessions/{sessionId}/assign?agentId={agentId}
+   * Requires: Keycloak JWT with ADMIN or STAFF role
+   */
+  async assignAgent(sessionId, agentId) {
+    if (!sessionId || !agentId) {
+      return { success: false, error: 'Session ID and Agent ID required' };
+    }
+
+    try {
+      const response = await fetch(
+        `${CHAT_API_BASE}/api/chat/sessions/${sessionId}/assign?agentId=${encodeURIComponent(agentId)}`,
+        {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, session: data };
+      }
+
+      const error = await response.json().catch(() => ({}));
+      return { success: false, error: error.message || 'Failed to assign agent' };
+    } catch (error) {
+      console.error('Assign agent error:', error);
+      return { success: false, error: 'Failed to assign agent' };
+    }
+  }
+
+  /**
    * Join a chat session (claim it as agent)
-   * This might be a custom endpoint or just connecting to WebSocket
+   * Assigns agent to session and connects WebSocket/polling
    */
   async joinSession(sessionId, agentId = 'admin') {
     this.currentSessionId = sessionId;
     this.agentId = agentId;
+
+    // First assign agent to the session
+    const assignResult = await this.assignAgent(sessionId, agentId);
+    if (!assignResult.success) {
+      console.warn('Failed to assign agent, continuing anyway:', assignResult.error);
+    }
 
     // Try to connect WebSocket
     try {
@@ -414,6 +503,8 @@ class AdminChatService {
 
   /**
    * Close a chat session
+   * POST /api/chat/sessions/{sessionId}/close
+   * Requires: Keycloak JWT with ADMIN or STAFF role
    */
   async closeSession(sessionId) {
     if (!sessionId) {
@@ -426,6 +517,7 @@ class AdminChatService {
     try {
       const response = await fetch(`${CHAT_API_BASE}/api/chat/sessions/${sessionId}/close`, {
         method: 'POST',
+        headers: getAuthHeaders(),
       });
 
       const data = await response.json();
@@ -442,6 +534,7 @@ class AdminChatService {
 
   /**
    * Mark user messages as read
+   * Requires: Keycloak JWT with ADMIN or STAFF role
    */
   async markAsRead(sessionId) {
     if (!sessionId) {
@@ -454,7 +547,10 @@ class AdminChatService {
     try {
       const response = await fetch(
         `${CHAT_API_BASE}/api/chat/sessions/${sessionId}/read?senderType=USER`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          headers: getAuthHeaders(),
+        }
       );
 
       if (response.ok) {

@@ -1,8 +1,8 @@
 // Wallet Service - Wallet management via external API
 import { API_KEY } from './api';
 
-// API base - call accounts.team33.mx directly
-const API_BASE = 'https://accounts.team33.mx';
+// API base - call api.team33.mx (admin service with JWT auth)
+const API_BASE = 'https://api.team33.mx';
 
 const LOCAL_WALLETS_KEY = 'team33_local_wallets';
 const PENDING_TRANSACTIONS_KEY = 'team33_pending_transactions';

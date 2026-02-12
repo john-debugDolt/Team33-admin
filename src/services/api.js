@@ -1,13 +1,13 @@
 /**
  * API Configuration
- * All API calls go directly to accounts.team33.mx
+ * All API calls go directly to api.team33.mx (admin service with JWT auth)
  */
 
 // API key from environment variable
 export const API_KEY = import.meta.env.VITE_API_KEY || '';
 
-// Base URL - call accounts.team33.mx directly
-const API_BASE_URL = 'https://accounts.team33.mx';
+// Base URL - call api.team33.mx (admin service with JWT auth)
+const API_BASE_URL = 'https://api.team33.mx';
 
 // LocalStorage keys
 export const STORAGE_KEYS = {

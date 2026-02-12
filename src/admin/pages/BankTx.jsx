@@ -2,12 +2,24 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiSearch, FiFile, FiAlertTriangle, FiPlus, FiRefreshCw, FiX, FiDownload } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
+import AccessDenied from '../../components/AccessDenied';
 
-// API base - call accounts.team33.mx directly
-const API_BASE = 'https://accounts.team33.mx';
+// API base URLs
+const API_BASE = 'https://api.team33.mx'; // Admin service (requires JWT)
+const ACCOUNTS_API = 'https://api.team33.mx'; // Admin service (requires JWT auth)
+
+// Get auth headers for API requests
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('team33_admin_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+};
 
 const BankTx = () => {
   const navigate = useNavigate();
+  const [accessDenied, setAccessDenied] = useState(false);
   // Default to 'all' to show all transactions initially
   const [selectedDate, setSelectedDate] = useState('all');
   const [selectedBank, setSelectedBank] = useState('all');
@@ -52,9 +64,9 @@ const BankTx = () => {
         }
       }
 
-      // Then fetch fresh data from API (no auth required)
+      // Then fetch fresh data from API
       try {
-        const response = await fetch('/api/banks');
+        const response = await fetch(`${ACCOUNTS_API}/api/banks`);
         const data = await response.json();
 
         // API can return array directly OR { success: true, banks: [...] }
@@ -134,13 +146,22 @@ const BankTx = () => {
       }
 
       try {
-        // Fetch pending and completed deposits in PARALLEL for speed (no auth required)
+        // Fetch pending and completed deposits in PARALLEL for speed (requires JWT auth)
         console.log('[BankTx] Fetching deposits for bank:', selectedBank);
+        const headers = getAuthHeaders();
 
         const [pendingResponse, completedResponse] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/deposits/pending`),
-          fetch(`${API_BASE}/api/admin/deposits/status/COMPLETED`)
+          fetch(`${API_BASE}/api/admin/deposits/pending`, { headers }),
+          fetch(`${API_BASE}/api/admin/deposits/status/COMPLETED`, { headers })
         ]);
+
+        // Check for 401/403 - access denied
+        if (pendingResponse.status === 401 || pendingResponse.status === 403 ||
+            completedResponse.status === 401 || completedResponse.status === 403) {
+          setAccessDenied(true);
+          setTxLoading(false);
+          return;
+        }
 
         const [pendingRes, completedRes] = await Promise.all([
           pendingResponse.ok ? pendingResponse.json() : [],
@@ -180,11 +201,11 @@ const BankTx = () => {
           const uniqueAccountIds = [...new Set(allDeposits.map(d => d.accountId).filter(Boolean))];
           const accountNames = {};
 
-          // Fetch account details in parallel (max 10 at a time to avoid overload)
+          // Fetch account details in parallel (max 20 at a time to avoid overload)
           await Promise.all(
             uniqueAccountIds.slice(0, 20).map(async (accountId) => {
               try {
-                const res = await fetch(`${API_BASE}/api/accounts/${accountId}`, { headers });
+                const res = await fetch(`${ACCOUNTS_API}/api/accounts/${accountId}`);
                 if (res.ok) {
                   const acc = await res.json();
                   accountNames[accountId] = `${acc.firstName || ''} ${acc.lastName || ''}`.trim() || accountId;
@@ -346,6 +367,11 @@ const BankTx = () => {
     setShowAddModal(false);
     setNewEntry({ description: '', inAmount: '', outAmount: '', remarks: '' });
   };
+
+  // Show access denied if user doesn't have permission
+  if (accessDenied) {
+    return <AccessDenied message="You don't have permission to access the Bank Transactions page." />;
+  }
 
   return (
     <div className="content-inner">

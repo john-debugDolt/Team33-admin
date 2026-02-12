@@ -14,7 +14,8 @@ import {
   getChatsForAccount,
   getChatMessages,
   getAccountIp,
-  getAccountDetails
+  getAccountDetails,
+  creditPendingCommissions
 } from '../../services/apiService';
 
 /**
@@ -92,6 +93,9 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
   const [betHistoryPage, setBetHistoryPage] = useState(0);
   const [commissions, setCommissions] = useState([]);
   const [pendingCommissionTotal, setPendingCommissionTotal] = useState(0);
+  const [pendingCommissions, setPendingCommissions] = useState([]);
+  const [creditingCommission, setCreditingCommission] = useState(false);
+  const [showCreditConfirm, setShowCreditConfirm] = useState(false);
   const [referrals, setReferrals] = useState([]);
   const [referredBy, setReferredBy] = useState(null);
   const [commissionFilter, setCommissionFilter] = useState({ status: '', type: '' });
@@ -247,8 +251,9 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
           case 'COMMISSION':
             // Fetch commission earnings, pending total, referrals, and referrer
             // Note: getReferralByReferred returns 404 if user wasn't referred - this is expected
+            console.log('[COMMISSION] Fetching for account:', user.accountId, 'with filter:', commissionFilter);
             const [commResult, pendingResult, referralsResult] = await Promise.all([
-              getCommissionEarnings(user.accountId, commissionFilter),
+              getCommissionEarnings(user.accountId, {}), // Don't pass filter to get ALL earnings
               getPendingCommissionTotal(user.accountId),
               getReferralsByPrincipal(user.accountId)
             ]);
@@ -256,19 +261,69 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
             // Fetch referrer separately to handle 404 gracefully (user may not have a referrer)
             const referredByResult = await getReferralByReferred(user.accountId).catch(() => ({ success: false }));
 
+            console.log('[COMMISSION] Raw API response:', commResult);
             if (commResult.success) {
-              setCommissions(Array.isArray(commResult.data) ? commResult.data : []);
+              // Handle different API response structures
+              let earningsData = commResult.data;
+              console.log('[COMMISSION] commResult.data type:', typeof earningsData, earningsData);
+              // If data is an object with earnings array, extract it
+              if (earningsData && !Array.isArray(earningsData) && earningsData.earnings) {
+                earningsData = earningsData.earnings;
+              }
+              // If data is an object with content array (paginated), extract it
+              if (earningsData && !Array.isArray(earningsData) && earningsData.content) {
+                earningsData = earningsData.content;
+              }
+              // If data is an object with data array, extract it
+              if (earningsData && !Array.isArray(earningsData) && earningsData.data) {
+                earningsData = earningsData.data;
+              }
+              console.log('[COMMISSION] Earnings data:', earningsData);
+              setCommissions(Array.isArray(earningsData) ? earningsData : []);
+            } else {
+              console.log('[COMMISSION] API call failed:', commResult.error);
             }
             if (pendingResult.success) {
-              setPendingCommissionTotal(pendingResult.data?.pendingTotal || 0);
+              // Handle different response structures for pending total
+              const pendingData = pendingResult.data;
+              const pendingAmount = pendingData?.pendingTotal ?? pendingData?.total ?? pendingData ?? 0;
+              console.log('[COMMISSION] Pending total:', pendingAmount);
+              setPendingCommissionTotal(typeof pendingAmount === 'number' ? pendingAmount : 0);
             }
             if (referralsResult.success) {
-              setReferrals(Array.isArray(referralsResult.data) ? referralsResult.data : []);
+              let referralsData = referralsResult.data;
+              if (referralsData && !Array.isArray(referralsData) && referralsData.referrals) {
+                referralsData = referralsData.referrals;
+              }
+              setReferrals(Array.isArray(referralsData) ? referralsData : []);
             }
             if (referredByResult.success && referredByResult.data) {
               setReferredBy(referredByResult.data);
             } else {
               setReferredBy(null); // User was not referred by anyone
+            }
+            break;
+
+          case 'CREDIT':
+            // Fetch all commission earnings for this user then filter to PENDING
+            console.log('[CREDIT] Fetching commissions for:', user.accountId);
+            const creditCommResult = await getCommissionEarnings(user.accountId, {});
+            const creditPendingResult = await getPendingCommissionTotal(user.accountId);
+
+            console.log('[CREDIT] Commission result:', creditCommResult);
+            console.log('[CREDIT] Pending result:', creditPendingResult);
+
+            if (creditCommResult.success) {
+              const allCommissions = Array.isArray(creditCommResult.data) ? creditCommResult.data : [];
+              // Filter only PENDING commissions
+              const pending = allCommissions.filter(c => c.status === 'PENDING');
+              console.log('[CREDIT] Pending commissions:', pending);
+              setPendingCommissions(pending);
+            }
+            if (creditPendingResult.success) {
+              const pendingTotal = creditPendingResult.data?.pendingTotal ?? creditPendingResult.data ?? 0;
+              console.log('[CREDIT] Pending total:', pendingTotal);
+              setPendingCommissionTotal(typeof pendingTotal === 'number' ? pendingTotal : 0);
             }
             break;
 
@@ -586,11 +641,12 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
         );
 
       case 'COMMISSION':
-        // Calculate totals from commission data
-        const totalEarnings = commissions.reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
-        const creditedTotal = commissions.filter(c => c.status === 'CREDITED').reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
-        const depositCommissions = commissions.filter(c => c.commissionType === 'DEPOSIT').reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
-        const playCommissions = commissions.filter(c => c.commissionType === 'PLAY').reduce((sum, c) => sum + parseFloat(c.commissionAmount || 0), 0);
+        // Calculate totals from commission data - handle both commissionAmount and amount field names
+        const getCommAmount = (c) => parseFloat(c.commissionAmount || c.amount || 0);
+        const totalEarnings = commissions.reduce((sum, c) => sum + getCommAmount(c), 0);
+        const creditedTotal = commissions.filter(c => c.status === 'CREDITED').reduce((sum, c) => sum + getCommAmount(c), 0);
+        const depositCommissions = commissions.filter(c => (c.commissionType || c.type) === 'DEPOSIT').reduce((sum, c) => sum + getCommAmount(c), 0);
+        const playCommissions = commissions.filter(c => (c.commissionType || c.type) === 'PLAY').reduce((sum, c) => sum + getCommAmount(c), 0);
 
         return (
           <div className="commission-section">
@@ -754,7 +810,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                   <tbody>
                     {commissions.map((comm, idx) => (
                       <tr key={comm.id || comm.earningId || idx}>
-                        <td className="mono" style={{fontSize: '10px', color: '#6b7280'}}>{(comm.id || comm.earningId || '').slice(-12)}</td>
+                        <td className="mono" style={{fontSize: '10px', color: '#6b7280'}}>{String(comm.id || comm.earningId || '').slice(-12)}</td>
                         <td style={{fontSize: '11px'}}>{formatDateTime(comm.createdAt || comm.earnedAt)}</td>
                         <td>
                           <span className={`type-badge ${(comm.commissionType || comm.type || 'PLAY').toLowerCase()}`}>
@@ -762,7 +818,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                           </span>
                         </td>
                         <td className="mono" style={{fontSize: '10px'}}>{comm.referredAccountId}</td>
-                        <td className="mono" style={{fontSize: '10px', color: '#6b7280'}}>{(comm.sourceTransactionId || comm.transactionId || '-').slice(-10)}</td>
+                        <td className="mono" style={{fontSize: '10px', color: '#6b7280'}}>{String(comm.sourceTransactionId || comm.sourceReference || comm.transactionId || '-').slice(-10)}</td>
                         <td>${parseFloat(comm.sourceAmount || 0).toFixed(2)}</td>
                         <td style={{fontWeight: 500}}>{((comm.commissionRate || 0) * 100).toFixed(2)}%</td>
                         <td style={{fontWeight: 700, color: '#16a34a'}}>+${parseFloat(comm.commissionAmount || comm.amount || 0).toFixed(2)}</td>
@@ -781,9 +837,110 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
         );
 
       case 'CREDIT':
+        const handleCreditAll = async () => {
+          if (!user?.accountId) return;
+          setShowCreditConfirm(false);
+          setCreditingCommission(true);
+          try {
+            const result = await creditPendingCommissions(user.accountId);
+            if (result.success) {
+              alert('All pending commissions credited successfully!');
+              // Refresh the pending commissions
+              const refreshResult = await getCommissionEarnings(user.accountId, { status: 'PENDING' });
+              if (refreshResult.success) {
+                const allComm = Array.isArray(refreshResult.data) ? refreshResult.data : [];
+                setPendingCommissions(allComm.filter(c => c.status === 'PENDING'));
+              }
+              const pendingRefresh = await getPendingCommissionTotal(user.accountId);
+              if (pendingRefresh.success) {
+                setPendingCommissionTotal(pendingRefresh.data?.pendingTotal || 0);
+              }
+            } else {
+              alert(result.error || 'Failed to credit commissions');
+            }
+          } catch (err) {
+            alert('Error crediting commissions: ' + err.message);
+          } finally {
+            setCreditingCommission(false);
+          }
+        };
+
         return (
           <div className="credit-section">
-            <div className="empty-state">Credit management coming soon</div>
+            {/* Pending Commission Summary */}
+            <div className="credit-summary-card">
+              <div className="credit-summary-header">
+                <div className="credit-icon">💰</div>
+                <div className="credit-info">
+                  <h3>Pending Commission</h3>
+                  <p className="credit-amount">${pendingCommissionTotal.toFixed(2)}</p>
+                </div>
+              </div>
+              {pendingCommissions.length > 0 && (
+                <button
+                  className="credit-all-btn"
+                  onClick={() => setShowCreditConfirm(true)}
+                  disabled={creditingCommission}
+                >
+                  {creditingCommission ? 'Processing...' : `Credit All (${pendingCommissions.length} pending)`}
+                </button>
+              )}
+            </div>
+
+            {/* Confirmation Dialog */}
+            {showCreditConfirm && (
+              <div className="credit-confirm-overlay" onClick={() => setShowCreditConfirm(false)}>
+                <div className="credit-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+                  <div className="confirm-icon">⚠️</div>
+                  <h4>Confirm Credit Commission</h4>
+                  <p>Are you sure you want to credit <strong>${pendingCommissionTotal.toFixed(2)}</strong> to this user's wallet?</p>
+                  <p className="confirm-warning">This action will transfer all pending commissions to the user's wallet balance.</p>
+                  <div className="confirm-actions">
+                    <button className="btn-cancel" onClick={() => setShowCreditConfirm(false)}>Cancel</button>
+                    <button className="btn-confirm" onClick={handleCreditAll}>Approve & Credit</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Pending Commissions Table */}
+            <div className="credit-table-section">
+              <h4>Pending Commission Earnings ({pendingCommissions.length})</h4>
+              {pendingCommissions.length === 0 ? (
+                <div className="empty-state">No pending commissions for this user</div>
+              ) : (
+                <table className="credit-table">
+                  <thead>
+                    <tr>
+                      <th>Earning ID</th>
+                      <th>Type</th>
+                      <th>From Account</th>
+                      <th>Source Amount</th>
+                      <th>Rate</th>
+                      <th>Commission</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingCommissions.map((comm, idx) => (
+                      <tr key={comm.earningId || comm.id || idx}>
+                        <td className="mono">{String(comm.earningId || comm.id || '-').slice(-10)}</td>
+                        <td>
+                          <span className={`type-badge ${(comm.commissionType || comm.type || '').toLowerCase()}`}>
+                            {comm.commissionType || comm.type || 'N/A'}
+                          </span>
+                        </td>
+                        <td className="mono">{comm.referredAccountId ? `...${comm.referredAccountId.slice(-8)}` : '-'}</td>
+                        <td>${parseFloat(comm.sourceAmount || 0).toFixed(2)}</td>
+                        <td>{((comm.commissionRate || 0) * 100).toFixed(1)}%</td>
+                        <td className="amount-cell">${parseFloat(comm.commissionAmount || 0).toFixed(2)}</td>
+                        <td className="date-cell">{comm.createdAt ? new Date(comm.createdAt).toLocaleDateString() : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         );
 
@@ -2204,6 +2361,249 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
           border-radius: 6px;
           font-size: 13px;
           min-width: 130px;
+        }
+
+        /* CREDIT Tab Styles */
+        .credit-section {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .credit-summary-card {
+          background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+          border-radius: 12px;
+          padding: 24px;
+          color: #fff;
+        }
+
+        .credit-summary-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 20px;
+        }
+
+        .credit-icon {
+          font-size: 40px;
+        }
+
+        .credit-info h3 {
+          margin: 0;
+          font-size: 14px;
+          font-weight: 500;
+          opacity: 0.8;
+        }
+
+        .credit-amount {
+          font-size: 36px;
+          font-weight: 700;
+          color: #4ade80;
+          margin: 4px 0 0;
+        }
+
+        .credit-all-btn {
+          width: 100%;
+          padding: 14px 24px;
+          background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+          color: #fff;
+          border: none;
+          border-radius: 8px;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .credit-all-btn:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
+        }
+
+        .credit-all-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        /* Credit Confirmation Dialog */
+        .credit-confirm-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1100;
+          backdrop-filter: blur(4px);
+        }
+
+        .credit-confirm-dialog {
+          background: #fff;
+          border-radius: 16px;
+          padding: 32px;
+          max-width: 420px;
+          width: 90%;
+          text-align: center;
+          box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+        }
+
+        .confirm-icon {
+          font-size: 48px;
+          margin-bottom: 16px;
+        }
+
+        .credit-confirm-dialog h4 {
+          margin: 0 0 12px;
+          font-size: 20px;
+          color: #111827;
+        }
+
+        .credit-confirm-dialog p {
+          margin: 0 0 8px;
+          color: #4b5563;
+          font-size: 15px;
+          line-height: 1.5;
+        }
+
+        .confirm-warning {
+          color: #92400e !important;
+          background: #fef3c7;
+          padding: 12px;
+          border-radius: 8px;
+          font-size: 13px !important;
+          margin-top: 12px !important;
+        }
+
+        .confirm-actions {
+          display: flex;
+          gap: 12px;
+          margin-top: 24px;
+        }
+
+        .btn-cancel {
+          flex: 1;
+          padding: 12px 20px;
+          background: #f3f4f6;
+          color: #374151;
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-cancel:hover {
+          background: #e5e7eb;
+        }
+
+        .btn-confirm {
+          flex: 1;
+          padding: 12px 20px;
+          background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+          color: #fff;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-confirm:hover {
+          box-shadow: 0 4px 12px rgba(22, 163, 74, 0.4);
+        }
+
+        /* Credit Table Section */
+        .credit-table-section {
+          background: #f9fafb;
+          padding: 20px;
+          border-radius: 12px;
+        }
+
+        .credit-table-section h4 {
+          margin: 0 0 16px;
+          font-size: 15px;
+          color: #374151;
+        }
+
+        .credit-table {
+          width: 100%;
+          border-collapse: collapse;
+          background: #fff;
+          border-radius: 8px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .credit-table th {
+          background: #f3f4f6;
+          padding: 12px 14px;
+          text-align: left;
+          font-size: 11px;
+          font-weight: 600;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        .credit-table td {
+          padding: 12px 14px;
+          font-size: 13px;
+          color: #374151;
+          border-bottom: 1px solid #f3f4f6;
+        }
+
+        .credit-table tr:last-child td {
+          border-bottom: none;
+        }
+
+        .credit-table tr:hover {
+          background: #f9fafb;
+        }
+
+        .credit-table .mono {
+          font-family: 'Monaco', 'Consolas', monospace;
+          font-size: 11px;
+          color: #6b7280;
+        }
+
+        .credit-table .amount-cell {
+          font-weight: 600;
+          color: #16a34a;
+        }
+
+        .credit-table .date-cell {
+          font-size: 12px;
+          color: #6b7280;
+        }
+
+        @media (max-width: 768px) {
+          .credit-summary-header {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .credit-amount {
+            font-size: 28px;
+          }
+
+          .confirm-actions {
+            flex-direction: column;
+          }
+
+          .credit-table {
+            font-size: 12px;
+          }
+
+          .credit-table th,
+          .credit-table td {
+            padding: 8px 10px;
+          }
         }
       `}</style>
     </div>

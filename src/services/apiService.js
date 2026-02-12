@@ -390,39 +390,39 @@ export const getReferralByReferred = (accountId) =>
 
 /**
  * Get commission earnings for an account
- * GET /api/wallets/commissions/earnings/{principalAccountId}
+ * GET /api/admin/commissions/earnings/{accountId}
  *
- * @param {string} principalAccountId - Principal account ID
+ * @param {string} accountId - Account ID
  * @param {Object} params - Query parameters
  * @param {string} params.status - Filter by status: PENDING, CREDITED, CANCELLED
  * @param {string} params.type - Filter by type: DEPOSIT or PLAY
  * @returns {Promise<Object>} - Array of CommissionEarning objects
  */
-export const getCommissionEarnings = (principalAccountId, params = {}) => {
+export const getCommissionEarnings = (accountId, params = {}) => {
   const queryParams = new URLSearchParams(params).toString();
-  const endpoint = `/api/wallets/commissions/earnings/${principalAccountId}${queryParams ? `?${queryParams}` : ''}`;
+  const endpoint = `/api/admin/commissions/earnings/${accountId}${queryParams ? `?${queryParams}` : ''}`;
   return apiRequest(endpoint);
 };
 
 /**
  * Get pending commission total for an account
- * GET /api/wallets/commissions/earnings/{principalAccountId}/pending-total
+ * GET /api/admin/commissions/earnings/{accountId}/pending-total
  *
- * @param {string} principalAccountId - Principal account ID
+ * @param {string} accountId - Account ID
  * @returns {Promise<Object>} - { pendingTotal: number }
  */
-export const getPendingCommissionTotal = (principalAccountId) =>
-  apiRequest(`/api/wallets/commissions/earnings/${principalAccountId}/pending-total`);
+export const getPendingCommissionTotal = (accountId) =>
+  apiRequest(`/api/admin/commissions/earnings/${accountId}/pending-total`);
 
 /**
  * Credit all pending commissions to the principal's wallet
- * POST /api/wallets/commissions/earnings/{principalAccountId}/credit
+ * POST /api/admin/commissions/earnings/{accountId}/credit
  *
- * @param {string} principalAccountId - Principal account ID
+ * @param {string} accountId - Account ID to credit commissions for
  * @returns {Promise<Object>} - Transaction object for the credit
  */
-export const creditPendingCommissions = (principalAccountId) =>
-  apiRequest(`/api/wallets/commissions/earnings/${principalAccountId}/credit`, {
+export const creditPendingCommissions = (accountId) =>
+  apiRequest(`/api/admin/commissions/earnings/${accountId}/credit`, {
     method: 'POST',
   });
 
@@ -600,6 +600,70 @@ export const getAccountIp = (accountId) =>
  */
 export const getAccountDetails = (accountId) =>
   apiRequest(`/api/admin/accounts/${accountId}`);
+
+// ============================================
+// COMMISSION RATES MANAGEMENT
+// Base URL: /api/admin/commission-rates
+// ============================================
+
+/**
+ * Get all commission rates
+ * GET /api/admin/commission-rates
+ *
+ * @returns {Promise<Object>} - Array of commission rate objects
+ */
+export const getAllCommissionRates = () =>
+  apiRequest('/api/admin/commission-rates');
+
+/**
+ * Get commission rate by ID
+ * GET /api/admin/commission-rates/{id}
+ *
+ * @param {number} id - Commission rate ID
+ * @returns {Promise<Object>} - Commission rate object
+ */
+export const getCommissionRateById = (id) =>
+  apiRequest(`/api/admin/commission-rates/${id}`);
+
+/**
+ * Update commission rate by ID
+ * PUT /api/admin/commission-rates/{id}
+ *
+ * @param {number} id - Commission rate ID
+ * @param {Object} data - Updated rate data (rate, minAmount, maxAmount, description, etc.)
+ * @returns {Promise<Object>} - Updated commission rate object
+ */
+export const updateCommissionRate = (id, data) =>
+  apiRequest(`/api/admin/commission-rates/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+
+/**
+ * Update commission rate by type
+ * PUT /api/admin/commission-rates/type/{type}
+ *
+ * @param {string} type - Rate type (DEPOSIT, WITHDRAWAL, REFERRAL, GAME_WIN)
+ * @param {Object} data - Updated rate data
+ * @returns {Promise<Object>} - Updated commission rate object
+ */
+export const updateCommissionRateByType = (type, data) =>
+  apiRequest(`/api/admin/commission-rates/type/${type}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+
+/**
+ * Toggle commission rate active status
+ * POST /api/admin/commission-rates/type/{type}/toggle
+ *
+ * @param {string} type - Rate type (DEPOSIT, WITHDRAWAL, REFERRAL, GAME_WIN)
+ * @returns {Promise<Object>} - Updated commission rate object
+ */
+export const toggleCommissionRateStatus = (type) =>
+  apiRequest(`/api/admin/commission-rates/type/${type}/toggle`, {
+    method: 'POST',
+  });
 
 // Export the base request function for custom calls
 export { apiRequest, API_BASE_URL };

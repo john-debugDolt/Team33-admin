@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FiPercent, FiDollarSign, FiInbox, FiRefreshCw, FiCreditCard, FiTrendingUp, FiClock, FiEdit2, FiSave, FiX, FiUsers, FiSettings, FiSearch, FiCheck } from 'react-icons/fi';
-import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions, getAllReferrals, updateReferral, getReferralsByPrincipal } from '../../services/apiService';
+import { getAllCommissionEarnings, getCommissionStats, creditPendingCommissions, getAllReferrals, updateReferral, getReferralsByPrincipal, getAllCommissionRates, updateCommissionRateByType } from '../../services/apiService';
 import UserDetailsModal from '../components/UserDetailsModal';
 
 const Commission = () => {
@@ -32,17 +32,25 @@ const Commission = () => {
   });
   const [saving, setSaving] = useState(false);
 
-  // Universal/Default commission settings
-  const [defaultSettings, setDefaultSettings] = useState(() => {
-    const saved = localStorage.getItem('commission_default_settings');
-    return saved ? JSON.parse(saved) : {
-      depositCommissionRate: 10, // 10%
-      depositCommissionMaxCount: 5,
-      playCommissionRate: 5, // 5%
-      playCommissionUntil: '', // empty = forever
-    };
-  });
+  // Commission rates from API
+  const [commissionRates, setCommissionRates] = useState([]);
+  const [loadingRates, setLoadingRates] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Fetch commission rates from API
+  const fetchCommissionRates = async () => {
+    setLoadingRates(true);
+    try {
+      const result = await getAllCommissionRates();
+      if (result.success && Array.isArray(result.data)) {
+        setCommissionRates(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching commission rates:', err);
+    } finally {
+      setLoadingRates(false);
+    }
+  };
 
   // Search for referrals by account ID
   const [searchAccountId, setSearchAccountId] = useState('');
@@ -59,24 +67,17 @@ const Commission = () => {
     }
   };
 
-  // Save universal/default settings
-  const saveDefaultSettings = async () => {
+  // Save commission rate by type
+  const saveCommissionRate = async (rateType, newRate) => {
     setSavingSettings(true);
     try {
-      // Save to localStorage
-      localStorage.setItem('commission_default_settings', JSON.stringify(defaultSettings));
-
-      // Also save to a global config that the site frontend can read
-      // This creates/updates a config that will be used when new referrals are created
-      const configForFrontend = {
-        depositCommissionRate: parseFloat(defaultSettings.depositCommissionRate) / 100,
-        depositCommissionMaxCount: parseInt(defaultSettings.depositCommissionMaxCount) || 5,
-        playCommissionRate: parseFloat(defaultSettings.playCommissionRate) / 100,
-        playCommissionUntil: defaultSettings.playCommissionUntil || null,
-      };
-      localStorage.setItem('commission_config', JSON.stringify(configForFrontend));
-
-      alert('Default commission settings saved successfully!');
+      const result = await updateCommissionRateByType(rateType, { rate: parseFloat(newRate) / 100 });
+      if (result.success) {
+        alert(`${rateType} commission rate updated successfully!`);
+        fetchCommissionRates(); // Refresh rates
+      } else {
+        alert(result.error || 'Failed to update commission rate');
+      }
     } catch (err) {
       alert('Error saving settings: ' + err.message);
     } finally {
@@ -244,6 +245,7 @@ const Commission = () => {
   useEffect(() => {
     fetchData();
     fetchReferrals();
+    fetchCommissionRates();
   }, [statusFilter, typeFilter]);
 
   // Show credit confirmation dialog
@@ -368,110 +370,76 @@ const Commission = () => {
         </button>
       </div>
 
-      {/* Universal Default Settings Tab */}
+      {/* Commission Rates Settings Tab */}
       {activeTab === 'settings' && (
         <div className="card" style={{ marginBottom: '20px' }}>
           <div className="card-header">
             <h3 className="card-title">
               <FiSettings style={{ marginRight: '8px' }} />
-              Default Commission Settings
+              Commission Rate Settings
             </h3>
             <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
-              These settings apply to all new referrals created on the site
+              Manage platform-wide commission rates. Changes are saved to the backend and apply immediately.
             </p>
           </div>
           <div className="settings-form">
-            <div className="settings-grid">
-              <div className="setting-card">
-                <div className="setting-header">
-                  <FiPercent className="setting-icon deposit" />
-                  <h4>Deposit Commission Rate</h4>
-                </div>
-                <p className="setting-description">
-                  Percentage earned when referred player makes a deposit
-                </p>
-                <div className="setting-input-group">
-                  <input
-                    type="number"
-                    value={defaultSettings.depositCommissionRate}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, depositCommissionRate: e.target.value })}
-                    min="0"
-                    max="100"
-                    step="0.1"
-                  />
-                  <span className="input-suffix">%</span>
-                </div>
+            {loadingRates ? (
+              <div style={{ textAlign: 'center', padding: '40px' }}>
+                <FiRefreshCw className="spin" size={24} />
+                <p style={{ margin: '10px 0 0', color: '#6b7280' }}>Loading commission rates...</p>
               </div>
-
-              <div className="setting-card">
-                <div className="setting-header">
-                  <FiCreditCard className="setting-icon count" />
-                  <h4>Max Deposits for Commission</h4>
-                </div>
-                <p className="setting-description">
-                  Maximum number of deposits eligible for commission
-                </p>
-                <div className="setting-input-group">
-                  <input
-                    type="number"
-                    value={defaultSettings.depositCommissionMaxCount}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, depositCommissionMaxCount: e.target.value })}
-                    min="0"
-                    max="100"
-                  />
-                  <span className="input-suffix">deposits</span>
-                </div>
+            ) : commissionRates.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#6b7280' }}>
+                <FiInbox size={32} style={{ marginBottom: '10px', opacity: 0.5 }} />
+                <p>No commission rates found.</p>
               </div>
-
-              <div className="setting-card">
-                <div className="setting-header">
-                  <FiTrendingUp className="setting-icon play" />
-                  <h4>Play Commission Rate</h4>
-                </div>
-                <p className="setting-description">
-                  Percentage earned when referred player places bets
-                </p>
-                <div className="setting-input-group">
-                  <input
-                    type="number"
-                    value={defaultSettings.playCommissionRate}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, playCommissionRate: e.target.value })}
-                    min="0"
-                    max="100"
-                    step="0.1"
-                  />
-                  <span className="input-suffix">%</span>
-                </div>
+            ) : (
+              <div className="settings-grid">
+                {commissionRates.map((rate) => (
+                  <div key={rate.id} className="setting-card">
+                    <div className="setting-header">
+                      {rate.rateType === 'DEPOSIT' && <FiCreditCard className="setting-icon deposit" />}
+                      {rate.rateType === 'WITHDRAWAL' && <FiDollarSign className="setting-icon count" />}
+                      {rate.rateType === 'REFERRAL' && <FiTrendingUp className="setting-icon play" />}
+                      {rate.rateType === 'GAME_WIN' && <FiPercent className="setting-icon time" />}
+                      <h4>{rate.displayName || rate.rateType}</h4>
+                    </div>
+                    <p className="setting-description">
+                      {rate.description || `Commission rate for ${rate.rateType.toLowerCase()}`}
+                    </p>
+                    <div className="setting-input-group">
+                      <input
+                        type="number"
+                        defaultValue={(rate.rate * 100).toFixed(2)}
+                        onBlur={(e) => {
+                          const newValue = parseFloat(e.target.value);
+                          if (!isNaN(newValue) && newValue !== rate.rate * 100) {
+                            saveCommissionRate(rate.rateType, newValue);
+                          }
+                        }}
+                        min="0"
+                        max="100"
+                        step="0.01"
+                      />
+                      <span className="input-suffix">%</span>
+                    </div>
+                    <div style={{ marginTop: '8px', fontSize: '12px', color: rate.isActive ? '#16a34a' : '#dc2626' }}>
+                      Status: {rate.isActive ? 'Active' : 'Inactive'}
+                    </div>
+                  </div>
+                ))}
               </div>
-
-              <div className="setting-card">
-                <div className="setting-header">
-                  <FiClock className="setting-icon time" />
-                  <h4>Play Commission Duration</h4>
-                </div>
-                <p className="setting-description">
-                  End date for play commission (leave empty for forever)
-                </p>
-                <div className="setting-input-group">
-                  <input
-                    type="date"
-                    value={defaultSettings.playCommissionUntil}
-                    onChange={(e) => setDefaultSettings({ ...defaultSettings, playCommissionUntil: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
+            )}
             <div className="settings-actions">
               <button
-                className="btn btn-primary btn-large"
-                onClick={saveDefaultSettings}
-                disabled={savingSettings}
+                className="btn btn-secondary"
+                onClick={fetchCommissionRates}
+                disabled={loadingRates}
               >
-                <FiSave /> {savingSettings ? 'Saving...' : 'Save Default Settings'}
+                <FiRefreshCw className={loadingRates ? 'spin' : ''} /> Refresh Rates
               </button>
               <p className="settings-note">
-                These settings will be used when new referrals are created through the refer-a-friend feature
+                Changes are saved automatically when you update a rate. Rates are fetched from the backend API.
               </p>
             </div>
           </div>

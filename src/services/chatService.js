@@ -17,9 +17,9 @@
 
 import { chatStorageService } from './chatStorageService';
 
-// Backend URLs - call accounts.team33.mx directly
-const BACKEND_HOST = 'accounts.team33.mx';
-const CHAT_API_BASE = 'https://accounts.team33.mx';
+// Backend URLs - call api.team33.mx (admin service with JWT auth)
+const BACKEND_HOST = 'api.team33.mx';
+const CHAT_API_BASE = 'https://api.team33.mx';
 
 // WebSocket: Connect directly to backend (Vercel doesn't proxy WebSocket)
 // Note: Backend is HTTP only, so we use ws:// not wss://

@@ -1,7 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiTrendingUp, FiRefreshCw, FiDownload, FiUsers, FiStar, FiGift, FiCreditCard, FiPercent, FiDollarSign, FiHash, FiAward, FiUserCheck, FiActivity, FiBarChart2, FiMessageSquare, FiList, FiUserPlus, FiChevronRight } from 'react-icons/fi';
+import { FiTrendingUp, FiRefreshCw, FiDownload, FiUsers, FiStar, FiGift, FiCreditCard, FiPercent, FiDollarSign, FiHash, FiAward, FiUserCheck, FiActivity, FiBarChart2, FiMessageSquare, FiList, FiUserPlus, FiChevronRight, FiFileText } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
+import AccessDenied from '../../components/AccessDenied';
+
+// API base URL
+const API_BASE = 'https://api.team33.mx';
+
+// Get auth headers for API requests
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('team33_admin_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+};
 
 // Report sections/sub-pages
 const REPORT_SECTIONS = [
@@ -26,6 +39,7 @@ const REPORT_SECTIONS = [
 
 const Reports = () => {
   const navigate = useNavigate();
+  const [accessDenied, setAccessDenied] = useState(false);
   const [activeSection, setActiveSection] = useState('transactions');
   const [displayMode, setDisplayMode] = useState('Daily');
   const [formData, setFormData] = useState({
@@ -49,27 +63,41 @@ const Reports = () => {
   const [customerData, setCustomerData] = useState([]);
   const [topCustomers, setTopCustomers] = useState([]);
 
-  // Fetch report data from API (no auth required)
+  // Fetch report data from API (requires JWT auth)
   const fetchReportData = async () => {
     setLoading(true);
     setError(null);
+    const headers = getAuthHeaders();
 
     try {
+      // Try to fetch all deposits and withdrawals first
+      const [depositsResponse, withdrawalsResponse] = await Promise.all([
+        fetch(`${API_BASE}/api/admin/deposits/all`, { headers }),
+        fetch(`${API_BASE}/api/admin/withdrawals/all`, { headers })
+      ]);
+
+      // Check for 401/403 - access denied
+      if (depositsResponse.status === 401 || depositsResponse.status === 403 ||
+          withdrawalsResponse.status === 401 || withdrawalsResponse.status === 403) {
+        setAccessDenied(true);
+        setLoading(false);
+        return;
+      }
+
       const [depositsRes, withdrawalsRes] = await Promise.all([
-        fetch('/api/admin/deposits/all')
-          .then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/admin/withdrawals/all')
-          .then(r => r.ok ? r.json() : []).catch(() => [])
+        depositsResponse.ok ? depositsResponse.json() : [],
+        withdrawalsResponse.ok ? withdrawalsResponse.json() : []
       ]);
 
       let deposits = Array.isArray(depositsRes) ? depositsRes : [];
       let withdrawals = Array.isArray(withdrawalsRes) ? withdrawalsRes : [];
 
+      // Fallback: fetch pending and completed separately if /all doesn't work
       if (deposits.length === 0) {
         const [pending, completed] = await Promise.all([
-          fetch('/api/admin/deposits/pending', { headers })
+          fetch(`${API_BASE}/api/admin/deposits/pending`, { headers })
             .then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch('/api/admin/deposits/status/COMPLETED', { headers })
+          fetch(`${API_BASE}/api/admin/deposits/status/COMPLETED`, { headers })
             .then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         deposits = [...(Array.isArray(pending) ? pending : []), ...(Array.isArray(completed) ? completed : [])];
@@ -77,9 +105,9 @@ const Reports = () => {
 
       if (withdrawals.length === 0) {
         const [pending, completed] = await Promise.all([
-          fetch('/api/admin/withdrawals/pending', { headers })
+          fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers })
             .then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch('/api/admin/withdrawals/status/COMPLETED', { headers })
+          fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers })
             .then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         withdrawals = [...(Array.isArray(pending) ? pending : []), ...(Array.isArray(completed) ? completed : [])];
@@ -214,7 +242,8 @@ const Reports = () => {
     fetchReportData();
   }, [displayMode, formData.periodStart, formData.periodEnd, formData.type]);
 
-  const handleExport = () => {
+  // Export to CSV
+  const handleExportCSV = () => {
     if (reportData.length === 0) {
       alert('No data to export');
       return;
@@ -234,6 +263,106 @@ const Reports = () => {
     a.download = `${activeSection}-report-${formData.periodStart}-to-${formData.periodEnd}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // Export to PDF
+  const handleExportPDF = () => {
+    if (reportData.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    const sectionName = REPORT_SECTIONS.find(s => s.id === activeSection)?.name || 'Report';
+
+    // Create PDF content using HTML and print
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${sectionName} Report - ${formData.periodStart} to ${formData.periodEnd}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
+          h1 { color: #059669; margin-bottom: 5px; }
+          .subtitle { color: #666; margin-bottom: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+          th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+          th { background: #f9fafb; font-weight: 600; }
+          .text-success { color: #059669; }
+          .text-danger { color: #dc2626; }
+          .totals-row { background: #f0fdf4; font-weight: 600; }
+          .summary { display: flex; gap: 30px; margin-bottom: 20px; }
+          .summary-item { padding: 15px; background: #f9fafb; border-radius: 8px; }
+          .summary-label { font-size: 12px; color: #666; }
+          .summary-value { font-size: 24px; font-weight: 700; }
+          @media print {
+            body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Team33 Casino - ${sectionName} Report</h1>
+        <p class="subtitle">Period: ${formData.periodStart} to ${formData.periodEnd} | Display: ${displayMode}</p>
+
+        <div class="summary">
+          <div class="summary-item">
+            <div class="summary-label">Total Deposits</div>
+            <div class="summary-value text-success">$${totals.depositTotal}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Total Withdrawals</div>
+            <div class="summary-value text-danger">$${totals.withdrawTotal}</div>
+          </div>
+          <div class="summary-item">
+            <div class="summary-label">Net Profit</div>
+            <div class="summary-value ${parseFloat(totals.net) >= 0 ? 'text-success' : 'text-danger'}">$${totals.net}</div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Deposit Count</th>
+              <th>Deposit Total</th>
+              <th>Withdraw Count</th>
+              <th>Withdraw Total</th>
+              <th>Net</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${reportData.map(row => `
+              <tr>
+                <td><strong>${row.date}</strong></td>
+                <td>${row.depositCount}</td>
+                <td class="text-success">$${row.depositTotal}</td>
+                <td>${row.withdrawCount}</td>
+                <td class="text-danger">$${row.withdrawTotal}</td>
+                <td class="${parseFloat(row.net) >= 0 ? 'text-success' : 'text-danger'}"><strong>$${row.net}</strong></td>
+              </tr>
+            `).join('')}
+            <tr class="totals-row">
+              <td><strong>TOTAL</strong></td>
+              <td>${totals.depositCount}</td>
+              <td class="text-success">$${totals.depositTotal}</td>
+              <td>${totals.withdrawCount}</td>
+              <td class="text-danger">$${totals.withdrawTotal}</td>
+              <td class="${parseFloat(totals.net) >= 0 ? 'text-success' : 'text-danger'}"><strong>$${totals.net}</strong></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p style="margin-top: 30px; font-size: 12px; color: #999;">
+          Generated on ${new Date().toLocaleString()} | Team33 Admin Panel
+        </p>
+
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   // Render different sections
@@ -399,39 +528,55 @@ const Reports = () => {
     );
   };
 
+  // Show access denied if user doesn't have permission
+  if (accessDenied) {
+    return <AccessDenied message="You don't have permission to access the Reports page." />;
+  }
+
   return (
-    <div className="reports-layout">
-      {/* Sidebar */}
-      <div className="reports-sidebar">
-        <div className="sidebar-header">
-          <FiTrendingUp /> Reports
+    <div className="reports-page">
+      {/* Page Header */}
+      <div className="page-header">
+        <h2 className="page-title">
+          <FiTrendingUp style={{ marginRight: '10px' }} />
+          Reports
+        </h2>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn btn-secondary btn-sm" onClick={handleExportCSV}>
+            <FiDownload /> CSV
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={handleExportPDF}>
+            <FiFileText /> PDF
+          </button>
         </div>
-        <nav className="sidebar-nav">
-          {REPORT_SECTIONS.map((section) => (
-            <button
-              key={section.id}
-              className={`sidebar-item ${activeSection === section.id ? 'active' : ''}`}
-              onClick={() => setActiveSection(section.id)}
-            >
-              <section.icon className="sidebar-icon" />
-              <span>{section.name}</span>
-              <FiChevronRight className="sidebar-arrow" />
-            </button>
+      </div>
+
+      {/* Report Type Tabs */}
+      <div className="report-tabs">
+        {REPORT_SECTIONS.slice(0, 8).map((section) => (
+          <button
+            key={section.id}
+            className={`report-tab ${activeSection === section.id ? 'active' : ''}`}
+            onClick={() => setActiveSection(section.id)}
+          >
+            <section.icon style={{ marginRight: '6px' }} />
+            {section.name}
+          </button>
+        ))}
+        <select
+          className="form-select report-more-select"
+          value={REPORT_SECTIONS.slice(8).find(s => s.id === activeSection) ? activeSection : ''}
+          onChange={(e) => e.target.value && setActiveSection(e.target.value)}
+        >
+          <option value="">More Reports...</option>
+          {REPORT_SECTIONS.slice(8).map((section) => (
+            <option key={section.id} value={section.id}>{section.name}</option>
           ))}
-        </nav>
+        </select>
       </div>
 
       {/* Main Content */}
       <div className="reports-content">
-        <div className="page-header">
-          <h2 className="page-title">
-            <FiTrendingUp style={{ marginRight: '10px' }} />
-            {REPORT_SECTIONS.find(s => s.id === activeSection)?.name} Report
-          </h2>
-          <button className="btn btn-secondary btn-sm" onClick={handleExport}>
-            <FiDownload /> Export
-          </button>
-        </div>
 
         {/* Filter Form */}
         <div className="filter-section">
@@ -498,73 +643,52 @@ const Reports = () => {
       </div>
 
       <style>{`
-        .reports-layout {
-          display: flex;
-          gap: 0;
-          min-height: calc(100vh - 120px);
-          margin: -20px;
+        .reports-page {
+          padding: 0;
         }
-        .reports-sidebar {
-          width: 220px;
-          background: #fff;
-          border-right: 1px solid #e5e7eb;
-          flex-shrink: 0;
-        }
-        .sidebar-header {
-          padding: 16px 20px;
-          font-weight: 600;
-          font-size: 15px;
-          border-bottom: 1px solid #e5e7eb;
+        .report-tabs {
           display: flex;
-          align-items: center;
+          flex-wrap: wrap;
           gap: 8px;
-          color: #374151;
+          margin-bottom: 20px;
+          padding: 12px;
+          background: #fff;
+          border-radius: 8px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+          align-items: center;
         }
-        .sidebar-nav {
-          padding: 8px 0;
-        }
-        .sidebar-item {
+        .report-tab {
           display: flex;
           align-items: center;
-          width: 100%;
-          padding: 10px 16px;
-          border: none;
-          background: none;
+          padding: 8px 14px;
+          border: 1px solid #e5e7eb;
+          background: #fff;
+          border-radius: 6px;
           cursor: pointer;
           font-size: 13px;
           color: #4b5563;
-          text-align: left;
           transition: all 0.15s;
         }
-        .sidebar-item:hover {
+        .report-tab:hover {
           background: #f3f4f6;
+          border-color: #d1d5db;
         }
-        .sidebar-item.active {
-          background: #ecfdf5;
-          color: #059669;
-          font-weight: 500;
+        .report-tab.active {
+          background: #059669;
+          color: #fff;
+          border-color: #059669;
         }
-        .sidebar-icon {
-          width: 16px;
-          height: 16px;
-          margin-right: 10px;
-          flex-shrink: 0;
-        }
-        .sidebar-item span {
-          flex: 1;
-        }
-        .sidebar-arrow {
-          width: 14px;
-          height: 14px;
-          opacity: 0.4;
-        }
-        .sidebar-item.active .sidebar-arrow {
-          opacity: 1;
+        .report-more-select {
+          padding: 8px 12px;
+          border: 1px solid #e5e7eb;
+          border-radius: 6px;
+          font-size: 13px;
+          color: #4b5563;
+          background: #fff;
+          cursor: pointer;
         }
         .reports-content {
-          flex: 1;
-          padding: 20px;
-          overflow-x: auto;
+          padding: 0;
         }
         .spin {
           animation: spin 1s linear infinite;
@@ -574,30 +698,12 @@ const Reports = () => {
           to { transform: rotate(360deg); }
         }
         @media (max-width: 768px) {
-          .reports-layout {
-            flex-direction: column;
-          }
-          .reports-sidebar {
-            width: 100%;
-            border-right: none;
-            border-bottom: 1px solid #e5e7eb;
-          }
-          .sidebar-nav {
-            display: flex;
-            flex-wrap: wrap;
+          .report-tabs {
             padding: 8px;
-            gap: 4px;
           }
-          .sidebar-item {
-            padding: 8px 12px;
-            border-radius: 6px;
+          .report-tab {
+            padding: 6px 10px;
             font-size: 12px;
-          }
-          .sidebar-arrow {
-            display: none;
-          }
-          .reports-content {
-            padding: 16px;
           }
         }
       `}</style>

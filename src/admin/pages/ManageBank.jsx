@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight, FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
 
-// API base - call accounts.team33.mx directly
-const API_BASE = 'https://accounts.team33.mx';
+// API base - call api.team33.mx (admin service with JWT auth)
+const API_BASE = 'https://api.team33.mx';
 
 const ManageBank = () => {
   const navigate = useNavigate();
