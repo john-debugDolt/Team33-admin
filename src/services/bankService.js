@@ -1,4 +1,5 @@
 // Bank Service - Fetch bank details for deposits with rotation logic
+import { getAuthHeaders } from './api';
 
 // API base - call api.team33.mx (admin service with JWT auth)
 const API_BASE = 'https://api.team33.mx';
@@ -47,11 +48,9 @@ export const bankService = {
   // Get all available banks for deposits with smart rotation
   async getAvailableBanks() {
     try {
-      const response = await fetch('/api/banks', {
+      const response = await fetch(`${API_BASE}/api/banks`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
       });
 
       if (!response.ok) {
@@ -123,9 +122,7 @@ export const bankService = {
     try {
       const response = await fetch(`${API_BASE}/api/banks/${bankId}`, {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
       });
 
       if (!response.ok) {

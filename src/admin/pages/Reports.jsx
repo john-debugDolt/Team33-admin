@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiTrendingUp, FiRefreshCw, FiDownload, FiUsers, FiStar, FiGift, FiCreditCard, FiPercent, FiDollarSign, FiHash, FiAward, FiUserCheck, FiActivity, FiBarChart2, FiMessageSquare, FiList, FiUserPlus, FiChevronRight, FiFileText } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
-import AccessDenied from '../../components/AccessDenied';
 
 // API base URL
 const API_BASE = 'https://api.team33.mx';
@@ -39,7 +38,6 @@ const REPORT_SECTIONS = [
 
 const Reports = () => {
   const navigate = useNavigate();
-  const [accessDenied, setAccessDenied] = useState(false);
   const [activeSection, setActiveSection] = useState('transactions');
   const [displayMode, setDisplayMode] = useState('Daily');
   const [formData, setFormData] = useState({
@@ -75,14 +73,6 @@ const Reports = () => {
         fetch(`${API_BASE}/api/admin/deposits/all`, { headers }),
         fetch(`${API_BASE}/api/admin/withdrawals/all`, { headers })
       ]);
-
-      // Check for 401/403 - access denied
-      if (depositsResponse.status === 401 || depositsResponse.status === 403 ||
-          withdrawalsResponse.status === 401 || withdrawalsResponse.status === 403) {
-        setAccessDenied(true);
-        setLoading(false);
-        return;
-      }
 
       const [depositsRes, withdrawalsRes] = await Promise.all([
         depositsResponse.ok ? depositsResponse.json() : [],
@@ -527,11 +517,6 @@ const Reports = () => {
       </div>
     );
   };
-
-  // Show access denied if user doesn't have permission
-  if (accessDenied) {
-    return <AccessDenied message="You don't have permission to access the Reports page." />;
-  }
 
   return (
     <div className="reports-page">

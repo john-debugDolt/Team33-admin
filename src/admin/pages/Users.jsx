@@ -6,7 +6,6 @@ import { keycloakService } from '../../services/keycloakService';
 import { adminApiService } from '../../services/adminApiService';
 import { getWallet, getDepositsForAccount, getWithdrawalsForAccount } from '../../services/apiService';
 import UserDetailsModal from '../components/UserDetailsModal';
-import AccessDenied from '../../components/AccessDenied';
 
 const Users = () => {
   const navigate = useNavigate();
@@ -20,7 +19,6 @@ const Users = () => {
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [accessDenied, setAccessDenied] = useState(false);
 
   // Modal states
   const [showUserModal, setShowUserModal] = useState(false);
@@ -61,13 +59,6 @@ const Users = () => {
 
       if (result.sessionExpired) {
         navigate('/login');
-        return;
-      }
-
-      // Check for 401/403 - access denied
-      if (result.status === 401 || result.status === 403) {
-        setAccessDenied(true);
-        setLoading(false);
         return;
       }
 
@@ -259,11 +250,6 @@ const Users = () => {
     keycloakService.logout();
     navigate('/login');
   };
-
-  // Show access denied if user doesn't have permission
-  if (accessDenied) {
-    return <AccessDenied message="You don't have permission to access the Users page." />;
-  }
 
   return (
     <div className="content-inner">

@@ -48,14 +48,25 @@ export const removeStoredData = (key) => {
   }
 };
 
-// Get auth token
-const getToken = () => getStoredData(STORAGE_KEYS.TOKEN);
+// Get auth token (JWT from Keycloak)
+const getToken = () => localStorage.getItem('team33_admin_token');
 
-// API client (no auth required - backend endpoints are public)
+// Get auth headers with JWT token
+export const getAuthHeaders = () => {
+  const token = getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+};
+
+// API client with JWT auth
 export const apiClient = {
   async request(endpoint, options = {}) {
+    const token = getToken();
     const headers = {
       'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` }),
       ...options.headers
     };
 

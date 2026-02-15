@@ -1,5 +1,5 @@
 // OTP Service - Phone verification via SMS
-import { API_KEY } from './api';
+import { getAuthHeaders } from './api';
 
 // API base - call api.team33.mx (admin service with JWT auth)
 const OTP_API_BASE = 'https://api.team33.mx/api/otp';
@@ -10,10 +10,12 @@ const BYPASS_ENABLED = false; // Set to true for dev bypass with code "000000"
 
 class OTPService {
   constructor() {
-    this.headers = {
-      'Content-Type': 'application/json',
-      'X-API-Key': API_KEY,
-    };
+    // Use getAuthHeaders() for JWT auth
+  }
+
+  // Get headers with JWT token
+  getHeaders() {
+    return getAuthHeaders();
   }
 
   // Format phone number to E.164 format
@@ -55,7 +57,7 @@ class OTPService {
     try {
       const response = await fetch(`${OTP_API_BASE}/send`, {
         method: 'POST',
-        headers: this.headers,
+        headers: this.getHeaders(),
         body: JSON.stringify({ phoneNumber: formattedPhone }),
       });
 
@@ -103,7 +105,7 @@ class OTPService {
 
       const response = await fetch(`${OTP_API_BASE}/verify`, {
         method: 'POST',
-        headers: this.headers,
+        headers: this.getHeaders(),
         body: JSON.stringify({
           phoneNumber: formattedPhone,
           otp: otp.toString(),
@@ -137,7 +139,7 @@ class OTPService {
 
       const response = await fetch(`${OTP_API_BASE}/status/${encodedPhone}`, {
         method: 'GET',
-        headers: this.headers,
+        headers: this.getHeaders(),
       });
 
       const data = await response.json();
@@ -168,7 +170,7 @@ class OTPService {
 
       const response = await fetch(`${OTP_API_BASE}/resend`, {
         method: 'POST',
-        headers: this.headers,
+        headers: this.getHeaders(),
         body: JSON.stringify({ phoneNumber: formattedPhone }),
       });
 

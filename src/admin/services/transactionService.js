@@ -1,7 +1,7 @@
 /**
  * Admin Transaction Service
  * Manages transactions across all users for admin panel
- * Backend endpoints are now public (no auth required)
+ * Backend endpoints require JWT auth via Keycloak
  */
 
 // API base - call api.team33.mx (admin service with JWT auth)
@@ -13,11 +13,13 @@ const ALL_TRANSACTIONS_KEY = 'admin_all_transactions';
 const USER_CACHE_KEY = 'admin_user_cache';
 
 /**
- * Get headers (no auth required)
+ * Get headers with JWT auth token
  */
 const getHeaders = () => {
+  const token = localStorage.getItem('team33_admin_token');
   return {
     'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
   };
 };
 

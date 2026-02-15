@@ -1,5 +1,5 @@
 // Wallet Service - Wallet management via external API
-import { API_KEY } from './api';
+import { getAuthHeaders } from './api';
 
 // API base - call api.team33.mx (admin service with JWT auth)
 const API_BASE = 'https://api.team33.mx';
@@ -8,10 +8,8 @@ const LOCAL_WALLETS_KEY = 'team33_local_wallets';
 const PENDING_TRANSACTIONS_KEY = 'team33_pending_transactions';
 const DEFAULT_BALANCE = 0; // Users must deposit via agent/admin
 
-const headers = {
-  'Content-Type': 'application/json',
-  'X-API-Key': API_KEY,
-};
+// Get headers with JWT auth
+const getHeaders = () => getAuthHeaders();
 
 // Generate unique Transaction ID
 const generateTransactionId = () => {
@@ -91,7 +89,7 @@ export const walletService = {
     try {
       const response = await fetch(`${API_BASE}/api/wallets/${accountId}`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
       });
 
       const data = await response.json();
@@ -122,7 +120,7 @@ export const walletService = {
     try {
       const response = await fetch(`${API_BASE}/api/wallets/account/${accountId}`, {
         method: 'GET',
-        headers,
+        headers: getHeaders(),
       });
 
       if (!response.ok) {
@@ -166,7 +164,7 @@ export const walletService = {
     try {
       const response = await fetch(`${API_BASE}/api/accounts/${accountId}/balance`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
       });
 
       if (response.ok) {
@@ -313,7 +311,7 @@ export const walletService = {
     try {
       const response = await fetch(`${API_BASE}/api/wallets/account/${accountId}/deposit`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({
           amount: Number(amount),
           description: `${paymentMethod} deposit`,
@@ -404,7 +402,7 @@ export const walletService = {
     try {
       const response = await fetch(`${API_BASE}/api/wallets/account/${accountId}/withdraw`, {
         method: 'POST',
-        headers,
+        headers: getHeaders(),
         body: JSON.stringify({
           amount: Number(amount),
           description: `${paymentMethod} withdrawal`,
@@ -479,7 +477,7 @@ export const walletService = {
         fetchPromises.push(
           fetch(`${API_BASE}/api/deposits/account/${accountId}`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getHeaders(),
           }).then(async res => {
             if (res.ok) {
               const data = await res.json();
@@ -509,7 +507,7 @@ export const walletService = {
         fetchPromises.push(
           fetch(`${API_BASE}/api/withdrawals/account/${accountId}`, {
             method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getHeaders(),
           }).then(async res => {
             if (res.ok) {
               const data = await res.json();
@@ -1029,7 +1027,7 @@ export const walletService = {
       // Step 1: Initiate deposit via API (use relative URL for Vercel proxy)
       const initiateResponse = await fetch(`${API_BASE}/api/deposits/initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({
           accountId: accountId,
           amount: depositAmount
@@ -1047,7 +1045,7 @@ export const walletService = {
       // Step 2: Verify deposit to move to PENDING_REVIEW
       const verifyResponse = await fetch(`${API_BASE}/api/deposits/verify`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({ depositId })
       });
 
@@ -1127,7 +1125,7 @@ export const walletService = {
       // Call the withdrawal API
       const response = await fetch('/api/withdrawals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders(),
         body: JSON.stringify({
           accountId: accountId,
           amount: withdrawAmount,

@@ -1,6 +1,6 @@
 /**
  * Admin API Service
- * Backend endpoints are now public (no auth required)
+ * Backend endpoints require JWT auth via Keycloak
  */
 
 // API base - call api.team33.mx (admin service with JWT auth)
@@ -8,16 +8,18 @@ const ADMIN_API_BASE = 'https://api.team33.mx/api/admin';
 
 class AdminApiService {
   /**
-   * Get headers (no auth required)
+   * Get headers with JWT auth token
    */
   getHeaders() {
+    const token = localStorage.getItem('team33_admin_token');
     return {
       'Content-Type': 'application/json',
+      ...(token && { 'Authorization': `Bearer ${token}` })
     };
   }
 
   /**
-   * Make API request (no auth required)
+   * Make API request with JWT auth
    */
   async request(endpoint, options = {}) {
     try {

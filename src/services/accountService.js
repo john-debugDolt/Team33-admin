@@ -1,5 +1,5 @@
 // Account Service - User account management via external API with localStorage fallback
-import { API_KEY } from './api';
+import { API_KEY, getAuthHeaders } from './api';
 
 // API base - call api.team33.mx (admin service with JWT auth)
 const API_BASE = 'https://api.team33.mx';
@@ -42,10 +42,12 @@ const generateUserId = () => {
 
 class AccountService {
   constructor() {
-    this.headers = {
-      'Content-Type': 'application/json',
-      'X-API-Key': API_KEY,
-    };
+    // Use getAuthHeaders() for JWT auth instead of static headers
+  }
+
+  // Get headers with JWT token
+  getHeaders() {
+    return getAuthHeaders();
   }
 
   // Get local accounts from localStorage
@@ -76,7 +78,7 @@ class AccountService {
       // Try external API first
       const response = await fetch('/api/accounts', {
         method: 'POST',
-        headers: this.headers,
+        headers: this.getHeaders(),
         body: JSON.stringify({
           password,
           firstName,
@@ -168,7 +170,7 @@ class AccountService {
     try {
       const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, {
         method: 'GET',
-        headers: this.headers,
+        headers: this.getHeaders(),
       });
 
       if (!response.ok) {
@@ -206,7 +208,7 @@ class AccountService {
     try {
       const response = await fetch(`${API_BASE}/api/accounts/phone/${encodeURIComponent(formattedPhone)}`, {
         method: 'GET',
-        headers: this.headers,
+        headers: this.getHeaders(),
       });
 
       if (!response.ok) {
@@ -245,7 +247,7 @@ class AccountService {
       const encodedPhone = encodeURIComponent(formattedPhone);
       const response = await fetch(`${API_BASE}/api/accounts/phone/${encodedPhone}`, {
         method: 'GET',
-        headers: this.headers,
+        headers: this.getHeaders(),
       });
 
       if (response.ok) {
@@ -275,7 +277,7 @@ class AccountService {
     try {
       const response = await fetch(`${API_BASE}/api/accounts/email/${encodeURIComponent(email)}`, {
         method: 'GET',
-        headers: this.headers,
+        headers: this.getHeaders(),
       });
 
       if (!response.ok) {
@@ -302,7 +304,7 @@ class AccountService {
     try {
       const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, {
         method: 'PUT',
-        headers: this.headers,
+        headers: this.getHeaders(),
         body: JSON.stringify(updates),
       });
 
@@ -330,7 +332,7 @@ class AccountService {
     try {
       const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, {
         method: 'DELETE',
-        headers: this.headers,
+        headers: this.getHeaders(),
       });
 
       if (!response.ok) {

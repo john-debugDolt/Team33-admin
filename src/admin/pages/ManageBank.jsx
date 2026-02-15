@@ -6,6 +6,15 @@ import { keycloakService } from '../../services/keycloakService';
 // API base - call api.team33.mx (admin service with JWT auth)
 const API_BASE = 'https://api.team33.mx';
 
+// Get auth headers with JWT token
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('team33_admin_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { 'Authorization': `Bearer ${token}` })
+  };
+};
+
 const ManageBank = () => {
   const navigate = useNavigate();
   const [banks, setBanks] = useState([]);
@@ -22,12 +31,14 @@ const ManageBank = () => {
     status: 'ACTIVE'
   });
 
-  // Fetch banks from API (no auth required)
+  // Fetch banks from API with JWT auth
   const fetchBanks = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/banks');
+      const response = await fetch(`${API_BASE}/api/banks`, {
+        headers: getAuthHeaders()
+      });
 
       if (response.ok) {
         const data = await response.json();
@@ -51,13 +62,13 @@ const ManageBank = () => {
     fetchBanks();
   }, []);
 
-  // Toggle bank status (no auth required)
+  // Toggle bank status with JWT auth
   const toggleStatus = async (bank) => {
     const newStatus = bank.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     try {
       const response = await fetch(`${API_BASE}/api/banks/${bank.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: newStatus })
       });
 
@@ -71,13 +82,13 @@ const ManageBank = () => {
     }
   };
 
-  // Add new bank (no auth required)
+  // Add new bank with JWT auth
   const handleAddBank = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/banks', {
+      const response = await fetch(`${API_BASE}/api/banks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(formData)
       });
 
@@ -94,13 +105,13 @@ const ManageBank = () => {
     }
   };
 
-  // Update bank (no auth required)
+  // Update bank with JWT auth
   const handleUpdateBank = async (e) => {
     e.preventDefault();
     try {
       const response = await fetch(`${API_BASE}/api/banks/${editingBank.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(formData)
       });
 
@@ -117,12 +128,13 @@ const ManageBank = () => {
     }
   };
 
-  // Delete bank (no auth required)
+  // Delete bank with JWT auth
   const handleDeleteBank = async (bank) => {
     if (!confirm(`Are you sure you want to delete ${bank.bankName}?`)) return;
     try {
       const response = await fetch(`${API_BASE}/api/banks/${bank.id}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: getAuthHeaders()
       });
 
       if (response.ok) {
