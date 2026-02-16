@@ -7,8 +7,8 @@
  * 2. Otherwise, direct calls to Keycloak (requires HTTPS or same-origin)
  */
 
-// BYPASS AUTH - Set to true to skip authentication (development only)
-const BYPASS_AUTH = false;
+// BYPASS AUTH - Backend removed Keycloak, all endpoints are public
+const BYPASS_AUTH = true;
 
 // Use backend proxy for auth - Set to false since Keycloak now has HTTPS
 const USE_BACKEND_PROXY = false;
