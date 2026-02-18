@@ -1,0 +1,253 @@
+/**
+ * Bonus Service for Admin Panel
+ * Handles all bonus-related API calls to the admin service
+ */
+
+import adminApiService from './adminApiService';
+
+// Bonus types enum - matches backend BonusType enum
+export const BONUS_TYPES = {
+  FIRST_DEPOSIT: 'FIRST_DEPOSIT',
+  RELOAD: 'RELOAD',
+  REFERRAL: 'REFERRAL',
+  CASHBACK: 'CASHBACK',
+  FREE_SPIN: 'FREE_SPIN',
+  LOYALTY: 'LOYALTY',
+  PROMOTIONAL: 'PROMOTIONAL',
+  PERCENTAGE: 'PERCENTAGE',
+  FIXED: 'FIXED'
+};
+
+// Claim status enum - matches backend ClaimStatus enum
+export const CLAIM_STATUS = {
+  PENDING: 'PENDING',
+  CREDITED: 'CREDITED',
+  EXPIRED: 'EXPIRED',
+  CANCELLED: 'CANCELLED',
+  COMPLETED: 'COMPLETED'
+};
+
+// Human-readable labels for bonus types
+export const BONUS_TYPE_LABELS = {
+  FIRST_DEPOSIT: 'First Deposit',
+  RELOAD: 'Reload Bonus',
+  REFERRAL: 'Referral Bonus',
+  CASHBACK: 'Cashback',
+  FREE_SPIN: 'Free Spins',
+  LOYALTY: 'Loyalty/VIP',
+  PROMOTIONAL: 'Promotional',
+  PERCENTAGE: 'Percentage',
+  FIXED: 'Fixed Amount'
+};
+
+// Human-readable labels for claim status
+export const CLAIM_STATUS_LABELS = {
+  PENDING: 'Pending',
+  CREDITED: 'Credited',
+  EXPIRED: 'Expired',
+  CANCELLED: 'Cancelled',
+  COMPLETED: 'Completed'
+};
+
+class BonusService {
+  /**
+   * Get all bonuses
+   * GET /api/admin/bonuses
+   */
+  async getAllBonuses() {
+    return adminApiService.get('/bonuses');
+  }
+
+  /**
+   * Get bonus by ID
+   * GET /api/admin/bonuses/{bonusId}
+   */
+  async getBonusById(bonusId) {
+    return adminApiService.get(`/bonuses/${bonusId}`);
+  }
+
+  /**
+   * Get bonus by code
+   * GET /api/admin/bonuses/code/{bonusCode}
+   */
+  async getBonusByCode(bonusCode) {
+    return adminApiService.get(`/bonuses/code/${bonusCode}`);
+  }
+
+  /**
+   * Filter bonuses
+   * GET /api/admin/bonuses/filter?isActive=true&bonusType=FIRST_DEPOSIT
+   */
+  async filterBonuses(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.isActive !== undefined) {
+      params.append('isActive', filters.isActive);
+    }
+    if (filters.bonusType) {
+      params.append('bonusType', filters.bonusType);
+    }
+    const query = params.toString();
+    return adminApiService.get(`/bonuses/filter${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Create a new bonus
+   * POST /api/admin/bonuses
+   */
+  async createBonus(bonusData) {
+    // Map frontend field names to backend expected names
+    const payload = {
+      bonusCode: bonusData.bonusCode,
+      name: bonusData.name || bonusData.displayName,
+      description: bonusData.description,
+      bonusType: bonusData.bonusType,
+      percentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
+      fixedAmount: bonusData.bonusType === 'FIXED' ? bonusData.bonusValue : undefined,
+      maxBonusAmount: bonusData.maxBonusAmount,
+      minDeposit: bonusData.minDeposit,
+      turnoverMultiplier: bonusData.turnoverMultiplier,
+      maxUsageCount: bonusData.maxClaims,
+      isActive: bonusData.isActive !== false,
+      requiresCode: bonusData.requiresCode || false,
+      startDate: bonusData.startDate,
+      endDate: bonusData.endDate
+    };
+
+    // Remove undefined values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined) delete payload[key];
+    });
+
+    return adminApiService.post('/bonuses', payload);
+  }
+
+  /**
+   * Update an existing bonus
+   * PUT /api/admin/bonuses/{bonusId}
+   */
+  async updateBonus(bonusId, bonusData) {
+    const payload = {
+      bonusCode: bonusData.bonusCode,
+      name: bonusData.name || bonusData.displayName,
+      description: bonusData.description,
+      bonusType: bonusData.bonusType,
+      percentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
+      fixedAmount: bonusData.bonusType === 'FIXED' ? bonusData.bonusValue : undefined,
+      maxBonusAmount: bonusData.maxBonusAmount,
+      minDeposit: bonusData.minDeposit,
+      turnoverMultiplier: bonusData.turnoverMultiplier,
+      maxUsageCount: bonusData.maxClaims,
+      isActive: bonusData.isActive,
+      requiresCode: bonusData.requiresCode,
+      startDate: bonusData.startDate,
+      endDate: bonusData.endDate
+    };
+
+    // Remove undefined values
+    Object.keys(payload).forEach(key => {
+      if (payload[key] === undefined) delete payload[key];
+    });
+
+    return adminApiService.put(`/bonuses/${bonusId}`, payload);
+  }
+
+  /**
+   * Activate a bonus
+   * POST /api/admin/bonuses/{bonusId}/activate
+   */
+  async activateBonus(bonusId) {
+    return adminApiService.post(`/bonuses/${bonusId}/activate`, {});
+  }
+
+  /**
+   * Deactivate a bonus
+   * POST /api/admin/bonuses/{bonusId}/deactivate
+   */
+  async deactivateBonus(bonusId) {
+    return adminApiService.post(`/bonuses/${bonusId}/deactivate`, {});
+  }
+
+  /**
+   * Delete (soft delete) a bonus
+   * DELETE /api/admin/bonuses/{bonusId}
+   */
+  async deleteBonus(bonusId) {
+    return adminApiService.delete(`/bonuses/${bonusId}`);
+  }
+
+  /**
+   * Get claims for a specific bonus
+   * GET /api/admin/bonuses/{bonusId}/claims
+   */
+  async getClaimsByBonus(bonusId) {
+    return adminApiService.get(`/bonuses/${bonusId}/claims`);
+  }
+
+  /**
+   * Get claims for a specific account
+   * GET /api/admin/bonuses/claims/account/{accountId}
+   */
+  async getClaimsByAccount(accountId) {
+    return adminApiService.get(`/bonuses/claims/account/${accountId}`);
+  }
+
+  /**
+   * Credit bonus directly to a user's wallet
+   * POST /api/admin/bonuses/credit-direct
+   */
+  async creditDirectBonus(creditData) {
+    const payload = {
+      accountId: creditData.accountId,
+      bonusAmount: creditData.bonusAmount,
+      turnoverMultiplier: creditData.turnoverMultiplier || 0,
+      reason: creditData.reason,
+      reference: creditData.reference
+    };
+
+    return adminApiService.post('/bonuses/credit-direct', payload);
+  }
+
+  /**
+   * Generate a unique bonus code
+   */
+  generateBonusCode(prefix = 'BONUS') {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${prefix}${timestamp}${random}`;
+  }
+
+  /**
+   * Format bonus for display
+   */
+  formatBonusForDisplay(bonus) {
+    return {
+      ...bonus,
+      typeLabel: BONUS_TYPE_LABELS[bonus.bonusType] || bonus.bonusType,
+      valueDisplay: bonus.bonusType === 'PERCENTAGE'
+        ? `${bonus.bonusValue}%`
+        : `$${bonus.bonusValue?.toFixed(2) || '0.00'}`,
+      statusLabel: bonus.isActive ? 'Active' : 'Inactive',
+      claimsDisplay: bonus.maxClaims
+        ? `${bonus.claimsCount || 0} / ${bonus.maxClaims}`
+        : `${bonus.claimsCount || 0} / Unlimited`
+    };
+  }
+
+  /**
+   * Format claim for display
+   */
+  formatClaimForDisplay(claim) {
+    return {
+      ...claim,
+      statusLabel: CLAIM_STATUS_LABELS[claim.status] || claim.status,
+      bonusAmountDisplay: `$${claim.bonusAmount?.toFixed(2) || '0.00'}`,
+      turnoverDisplay: `$${claim.turnoverRequired?.toFixed(2) || '0.00'}`,
+      dateDisplay: claim.createdAt
+        ? new Date(claim.createdAt).toLocaleString()
+        : '-'
+    };
+  }
+}
+
+export const bonusService = new BonusService();
+export default bonusService;
