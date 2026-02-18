@@ -701,36 +701,67 @@ const Rebate = () => {
                   <thead>
                     <tr>
                       <th>Account ID</th>
-                      <th>Deposit Amount</th>
                       <th>Bonus Amount</th>
-                      <th>Turnover Required</th>
+                      <th>Turnover Progress</th>
                       <th>Status</th>
+                      <th>Reference</th>
                       <th>Date</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {claims.map((claim) => (
-                      <tr key={claim.id}>
-                        <td><code style={{ fontSize: '11px' }}>{claim.accountId}</code></td>
-                        <td>${claim.depositAmount?.toFixed(2) || '0.00'}</td>
-                        <td style={{ color: '#10b981', fontWeight: '600' }}>
-                          ${claim.bonusAmount?.toFixed(2) || '0.00'}
-                        </td>
-                        <td>${claim.turnoverRequired?.toFixed(2) || '0.00'}</td>
-                        <td>
-                          <span className={`badge badge-${
-                            claim.status === 'CREDITED' ? 'success' :
-                            claim.status === 'COMPLETED' ? 'primary' :
-                            claim.status === 'PENDING' ? 'warning' : 'secondary'
-                          }`}>
-                            {CLAIM_STATUS_LABELS[claim.status] || claim.status}
-                          </span>
-                        </td>
-                        <td style={{ fontSize: '12px' }}>
-                          {claim.createdAt ? new Date(claim.createdAt).toLocaleString() : '-'}
-                        </td>
-                      </tr>
-                    ))}
+                    {claims.map((claim) => {
+                      // Calculate turnover progress percentage
+                      const progress = claim.turnoverRequired > 0
+                        ? Math.min(100, ((claim.turnoverProgress || 0) / claim.turnoverRequired) * 100)
+                        : 100;
+                      return (
+                        <tr key={claim.id || claim.claimId}>
+                          <td><code style={{ fontSize: '11px' }}>{claim.accountId}</code></td>
+                          <td style={{ color: '#10b981', fontWeight: '600' }}>
+                            ${claim.bonusAmount?.toFixed(2) || '0.00'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              <div style={{
+                                background: 'rgba(107, 114, 128, 0.2)',
+                                borderRadius: '4px',
+                                height: '6px',
+                                overflow: 'hidden'
+                              }}>
+                                <div style={{
+                                  background: progress >= 100 ? '#10b981' : '#6366f1',
+                                  height: '100%',
+                                  width: `${progress}%`,
+                                  transition: 'width 0.3s'
+                                }} />
+                              </div>
+                              <span style={{ fontSize: '11px', color: '#6b7280' }}>
+                                ${claim.turnoverProgress?.toFixed(2) || '0.00'} / ${claim.turnoverRequired?.toFixed(2) || '0.00'}
+                                {' '}({progress.toFixed(0)}%)
+                              </span>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`badge badge-${
+                              claim.status === 'CREDITED' || claim.status === 'ACTIVE' ? 'success' :
+                              claim.status === 'COMPLETED' || claim.status === 'PAID' ? 'primary' :
+                              claim.status === 'PENDING' || claim.status === 'COMPLETING' ? 'warning' :
+                              claim.status === 'EXPIRED' || claim.status === 'FORFEITED' ? 'danger' : 'secondary'
+                            }`}>
+                              {CLAIM_STATUS_LABELS[claim.status] || claim.status}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: '11px', color: '#6b7280' }}>
+                            {claim.reference || '-'}
+                          </td>
+                          <td style={{ fontSize: '12px' }}>
+                            {claim.claimedAt || claim.createdAt
+                              ? new Date(claim.claimedAt || claim.createdAt).toLocaleString()
+                              : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
@@ -882,6 +913,10 @@ const Rebate = () => {
         .badge-warning {
           background: rgba(245, 158, 11, 0.15);
           color: #f59e0b;
+        }
+        .badge-danger {
+          background: rgba(239, 68, 68, 0.15);
+          color: #ef4444;
         }
         .btn-success {
           background: rgba(16, 185, 129, 0.15);

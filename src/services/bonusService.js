@@ -19,12 +19,19 @@ export const BONUS_TYPES = {
 };
 
 // Claim status enum - matches backend ClaimStatus enum
+// Based on official docs: CLAIMED → ACTIVE → COMPLETING → COMPLETED
+// Also: EXPIRED, FORFEITED, PAID, CANCELLED
 export const CLAIM_STATUS = {
   PENDING: 'PENDING',
+  CLAIMED: 'CLAIMED',
+  ACTIVE: 'ACTIVE',
   CREDITED: 'CREDITED',
+  COMPLETING: 'COMPLETING',
+  COMPLETED: 'COMPLETED',
   EXPIRED: 'EXPIRED',
-  CANCELLED: 'CANCELLED',
-  COMPLETED: 'COMPLETED'
+  FORFEITED: 'FORFEITED',
+  PAID: 'PAID',
+  CANCELLED: 'CANCELLED'
 };
 
 // Human-readable labels for bonus types
@@ -43,10 +50,15 @@ export const BONUS_TYPE_LABELS = {
 // Human-readable labels for claim status
 export const CLAIM_STATUS_LABELS = {
   PENDING: 'Pending',
+  CLAIMED: 'Claimed',
+  ACTIVE: 'Active',
   CREDITED: 'Credited',
+  COMPLETING: 'Completing',
+  COMPLETED: 'Completed',
   EXPIRED: 'Expired',
-  CANCELLED: 'Cancelled',
-  COMPLETED: 'Completed'
+  FORFEITED: 'Forfeited',
+  PAID: 'Paid',
+  CANCELLED: 'Cancelled'
 };
 
 class BonusService {
@@ -93,15 +105,18 @@ class BonusService {
   /**
    * Create a new bonus
    * POST /api/admin/bonuses
+   * Based on official docs: CreateBonusRequest includes bonusPercentage, fixedAmount, etc.
    */
   async createBonus(bonusData) {
-    // Map frontend field names to backend expected names
+    // Map frontend field names to backend expected names per official docs
     const payload = {
       bonusCode: bonusData.bonusCode,
       name: bonusData.name || bonusData.displayName,
       description: bonusData.description,
       bonusType: bonusData.bonusType,
-      percentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
+      // Backend expects bonusPercentage for PERCENTAGE type
+      bonusPercentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
+      // Backend expects fixedAmount for FIXED type
       fixedAmount: bonusData.bonusType === 'FIXED' ? bonusData.bonusValue : undefined,
       maxBonusAmount: bonusData.maxBonusAmount,
       minDeposit: bonusData.minDeposit,
@@ -131,7 +146,9 @@ class BonusService {
       name: bonusData.name || bonusData.displayName,
       description: bonusData.description,
       bonusType: bonusData.bonusType,
-      percentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
+      // Backend expects bonusPercentage for PERCENTAGE type
+      bonusPercentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
+      // Backend expects fixedAmount for FIXED type
       fixedAmount: bonusData.bonusType === 'FIXED' ? bonusData.bonusValue : undefined,
       maxBonusAmount: bonusData.maxBonusAmount,
       minDeposit: bonusData.minDeposit,
@@ -194,14 +211,24 @@ class BonusService {
   /**
    * Credit bonus directly to a user's wallet
    * POST /api/admin/bonuses/credit-direct
+   *
+   * Per official docs:
+   * - Creates a SYSTEM_DIRECT_CREDIT placeholder bonus if not exists
+   * - Credits bonus_balance in wallet
+   * - Creates BonusClaim record for audit
+   * - turnoverRequired = bonusAmount × turnoverMultiplier
    */
   async creditDirectBonus(creditData) {
     const payload = {
       accountId: creditData.accountId,
-      bonusAmount: creditData.bonusAmount,
-      turnoverMultiplier: creditData.turnoverMultiplier || 0,
+      bonusAmount: Number(creditData.bonusAmount),
+      // Default 1x turnover per docs, 0 means no wagering requirement
+      turnoverMultiplier: creditData.turnoverMultiplier !== undefined
+        ? Number(creditData.turnoverMultiplier)
+        : 1,
       reason: creditData.reason,
-      reference: creditData.reference
+      // Auto-generate reference if not provided
+      reference: creditData.reference || `DC-${Date.now()}`
     };
 
     return adminApiService.post('/bonuses/credit-direct', payload);
