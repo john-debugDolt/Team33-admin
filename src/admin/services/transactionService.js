@@ -485,6 +485,81 @@ export const transactionService = {
   },
 
   /**
+   * Get withdrawal details (Admin view)
+   * GET /api/admin/withdrawals/{withdrawalId}
+   *
+   * Returns detailed withdrawal info including user info,
+   * financial summary, turnover status, and risk assessment.
+   */
+  async getWithdrawalDetails(withdrawalId) {
+    try {
+      const headers = getHeaders();
+      // Handle prefixed IDs
+      let apiId = withdrawalId;
+      if (withdrawalId.startsWith('WD')) {
+        apiId = withdrawalId.replace(/^WD/, '');
+      }
+
+      const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}`, { headers });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          success: true,
+          withdrawal: data.withdrawal || data,
+          user: data.user,
+          financialSummary: data.financialSummary,
+          turnoverStatus: data.turnoverStatus,
+          withdrawalHistory: data.withdrawalHistory,
+          riskAssessment: data.riskAssessment,
+        };
+      }
+
+      return { success: false, error: 'Withdrawal not found' };
+    } catch (error) {
+      console.error('Error fetching withdrawal details:', error);
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  /**
+   * Get withdrawal statistics (Dashboard)
+   * GET /api/admin/withdrawals/stats
+   *
+   * @param {string} period - today, week, month, year
+   */
+  async getWithdrawalStats(period = 'today') {
+    try {
+      const headers = getHeaders();
+      const response = await fetch(`${API_BASE}/api/admin/withdrawals/stats?period=${period}`, { headers });
+
+      if (response.ok) {
+        const data = await response.json();
+        return {
+          success: true,
+          period: data.period,
+          stats: data.stats || {
+            totalRequests: 0,
+            pendingCount: 0,
+            approvedCount: 0,
+            rejectedCount: 0,
+            totalAmountRequested: 0,
+            totalAmountPaid: 0,
+            averageProcessingTime: 'N/A',
+          },
+          byMethod: data.byMethod || {},
+          riskBreakdown: data.riskBreakdown || {},
+        };
+      }
+
+      return { success: false, error: 'Failed to fetch stats' };
+    } catch (error) {
+      console.error('Error fetching withdrawal stats:', error);
+      return { success: false, error: 'Network error' };
+    }
+  },
+
+  /**
    * Get a single deposit by ID
    */
   async getDeposit(depositId) {
