@@ -4,8 +4,9 @@
  * Backend endpoints require JWT auth via Keycloak
  */
 
-// API base - call api.team33.mx (admin service with JWT auth)
+// API base - deposits use api.team33.mx, withdrawals use accounts.team33.mx
 const API_BASE = 'https://api.team33.mx';
+const ACCOUNTS_API_BASE = 'https://accounts.team33.mx';
 
 // LocalStorage keys for withdrawals (no API yet)
 const PENDING_TRANSACTIONS_KEY = 'admin_pending_transactions';
@@ -183,25 +184,25 @@ export const transactionService = {
       console.error('Error fetching deposits from API:', error);
     }
 
-    // Fetch withdrawals from API
+    // Fetch withdrawals from API (uses accounts.team33.mx)
     try {
       const headers = getHeaders();
 
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
-        const response = await fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers });
+        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'REJECTED') {
-        const response = await fetch(`${API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers });
+        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'ALL' || !filters.status) {
         const [pending, completed, rejected] = await Promise.all([
-          fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         apiWithdrawals = [...pending, ...completed, ...rejected];
       } else {
-        const response = await fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers });
+        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/pending`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       }
 
@@ -369,20 +370,26 @@ export const transactionService = {
       }
     }
 
-    // Check if it's a withdrawal
-    if (transactionId.startsWith('WD') || transactionId.startsWith('WTH')) {
+    // Check if it's a withdrawal (uses accounts.team33.mx with /complete endpoint)
+    if (transactionId.startsWith('WD') || transactionId.startsWith('WTH') || transactionId.startsWith('WDR')) {
       try {
+        // Use original ID or extract from prefixed ID
         let apiId = txInfo?.originalId || transactionId;
-        if (apiId.startsWith('WD') && !txInfo?.originalId) {
+        // If ID starts with WD but not WDR, remove the WD prefix
+        if (apiId.startsWith('WD') && !apiId.startsWith('WDR') && !txInfo?.originalId) {
           apiId = transactionId.replace(/^WD/, '');
         }
 
-        const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}/approve`, {
+        console.log('[TransactionService] Completing withdrawal:', apiId);
+
+        // Use /complete endpoint (not /approve) as per API spec
+        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/${apiId}/complete`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             adminId: 'admin1',
-            adminNotes: adminNotes || 'Approved via admin panel'
+            externalReference: adminNotes || null,
+            notes: adminNotes || 'Completed via admin panel'
           })
         });
 
@@ -390,9 +397,9 @@ export const transactionService = {
           const data = await response.json();
           return {
             success: true,
-            withdrawId: transactionId,
-            status: data.status,
-            message: data.message || 'Withdrawal approved and processed'
+            withdrawId: data.withdrawId || transactionId,
+            status: data.status || 'COMPLETED',
+            message: data.message || 'Withdrawal completed successfully'
           };
         } else {
           const errorText = await response.text();
@@ -401,11 +408,12 @@ export const transactionService = {
             const errorJson = JSON.parse(errorText);
             errorMessage += errorJson.message || errorJson.error || JSON.stringify(errorJson);
           } catch {
-            errorMessage += errorText || 'Failed to approve withdrawal';
+            errorMessage += errorText || 'Failed to complete withdrawal';
           }
           return { success: false, error: errorMessage };
         }
       } catch (error) {
+        console.error('[TransactionService] Withdrawal complete error:', error);
         return { success: false, error: `Network error: ${error.message}` };
       }
     }
@@ -448,19 +456,23 @@ export const transactionService = {
       }
     }
 
-    // Check if it's a withdrawal
-    if (transactionId.startsWith('WD') || transactionId.startsWith('WTH')) {
+    // Check if it's a withdrawal (uses accounts.team33.mx)
+    if (transactionId.startsWith('WD') || transactionId.startsWith('WTH') || transactionId.startsWith('WDR')) {
       try {
         let apiId = originalId || transactionId;
-        if (apiId.startsWith('WD') && !originalId) {
+        // If ID starts with WD but not WDR, remove the WD prefix
+        if (apiId.startsWith('WD') && !apiId.startsWith('WDR') && !originalId) {
           apiId = transactionId.replace(/^WD/, '');
         }
-        const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}/reject`, {
+
+        console.log('[TransactionService] Rejecting withdrawal:', apiId);
+
+        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/${apiId}/reject`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
             adminId: 'admin1',
-            adminNotes: reason || 'Rejected via admin panel'
+            reason: reason || 'Rejected via admin panel'
           })
         });
 
@@ -468,15 +480,16 @@ export const transactionService = {
           const data = await response.json();
           return {
             success: true,
-            withdrawId: transactionId,
-            status: data.status,
-            message: data.message || 'Withdrawal rejected'
+            withdrawId: data.withdrawId || transactionId,
+            status: data.status || 'REJECTED',
+            message: data.message || 'Withdrawal rejected. Funds refunded to wallet.'
           };
         } else {
           const error = await response.json().catch(() => ({}));
           return { success: false, error: error.message || 'Failed to reject withdrawal' };
         }
       } catch (error) {
+        console.error('[TransactionService] Withdrawal reject error:', error);
         return { success: false, error: 'Network error while rejecting withdrawal' };
       }
     }
@@ -488,30 +501,26 @@ export const transactionService = {
    * Get withdrawal details (Admin view)
    * GET /api/admin/withdrawals/{withdrawalId}
    *
-   * Returns detailed withdrawal info including user info,
-   * financial summary, turnover status, and risk assessment.
+   * Returns detailed withdrawal info with unmasked banking info.
    */
   async getWithdrawalDetails(withdrawalId) {
     try {
       const headers = getHeaders();
-      // Handle prefixed IDs
+      // Handle prefixed IDs - keep WDR prefix as-is
       let apiId = withdrawalId;
-      if (withdrawalId.startsWith('WD')) {
+      if (withdrawalId.startsWith('WD') && !withdrawalId.startsWith('WDR')) {
         apiId = withdrawalId.replace(/^WD/, '');
       }
 
-      const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}`, { headers });
+      console.log('[TransactionService] Getting withdrawal details:', apiId);
+
+      const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/${apiId}`, { headers });
 
       if (response.ok) {
         const data = await response.json();
         return {
           success: true,
-          withdrawal: data.withdrawal || data,
-          user: data.user,
-          financialSummary: data.financialSummary,
-          turnoverStatus: data.turnoverStatus,
-          withdrawalHistory: data.withdrawalHistory,
-          riskAssessment: data.riskAssessment,
+          withdrawal: data,
         };
       }
 
@@ -525,30 +534,23 @@ export const transactionService = {
   /**
    * Get withdrawal statistics (Dashboard)
    * GET /api/admin/withdrawals/stats
-   *
-   * @param {string} period - today, week, month, year
    */
-  async getWithdrawalStats(period = 'today') {
+  async getWithdrawalStats() {
     try {
       const headers = getHeaders();
-      const response = await fetch(`${API_BASE}/api/admin/withdrawals/stats?period=${period}`, { headers });
+      const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/stats`, { headers });
 
       if (response.ok) {
         const data = await response.json();
         return {
           success: true,
-          period: data.period,
-          stats: data.stats || {
-            totalRequests: 0,
-            pendingCount: 0,
-            approvedCount: 0,
-            rejectedCount: 0,
-            totalAmountRequested: 0,
-            totalAmountPaid: 0,
-            averageProcessingTime: 'N/A',
+          stats: {
+            pending: data.pending || 0,
+            pendingReview: data.pendingReview || 0,
+            completed: data.completed || 0,
+            rejected: data.rejected || 0,
+            failed: data.failed || 0,
           },
-          byMethod: data.byMethod || {},
-          riskBreakdown: data.riskBreakdown || {},
         };
       }
 
