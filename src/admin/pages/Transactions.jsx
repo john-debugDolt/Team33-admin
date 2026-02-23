@@ -29,6 +29,9 @@ const Transactions = () => {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  const [modalMode, setModalMode] = useState('view'); // 'view' or 'reject'
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [withdrawalDetails, setWithdrawalDetails] = useState(null);
 
   // Fetch transactions
   const fetchTransactions = async () => {
@@ -110,7 +113,31 @@ const Transactions = () => {
   const openRejectModal = (transaction) => {
     setSelectedTransaction(transaction);
     setRejectReason('');
+    setModalMode('reject');
+    setWithdrawalDetails(null);
     setShowModal(true);
+  };
+
+  // View transaction details (click on ID)
+  const viewTransactionDetails = async (transaction) => {
+    setSelectedTransaction(transaction);
+    setModalMode('view');
+    setShowModal(true);
+    setWithdrawalDetails(null);
+
+    // Fetch full details for withdrawals
+    if (transaction.type === 'WITHDRAWAL') {
+      setLoadingDetails(true);
+      try {
+        const result = await transactionService.getWithdrawalDetails(transaction.originalId || transaction.id);
+        if (result.success) {
+          setWithdrawalDetails(result.withdrawal);
+        }
+      } catch (error) {
+        console.error('Error fetching withdrawal details:', error);
+      }
+      setLoadingDetails(false);
+    }
   };
 
   // Get status badge
@@ -279,7 +306,19 @@ const Transactions = () => {
               ) : transactions.length > 0 ? (
                 transactions.map((tx) => (
                   <tr key={tx.id}>
-                    <td><strong style={{ fontSize: '11px' }}>{tx.id}</strong></td>
+                    <td>
+                      <strong
+                        style={{
+                          fontSize: '11px',
+                          color: '#3b82f6',
+                          cursor: 'pointer',
+                          textDecoration: 'underline'
+                        }}
+                        onClick={() => viewTransactionDetails(tx)}
+                      >
+                        {tx.id}
+                      </strong>
+                    </td>
                     <td>
                       <div>
                         <strong>{tx.username || tx.accountId}</strong>
@@ -365,7 +404,7 @@ const Transactions = () => {
         </div>
       </div>
 
-      {/* Modal for Reject/View */}
+      {/* Modal for View/Reject */}
       {showModal && selectedTransaction && (
         <div style={{
           position: 'fixed',
@@ -373,7 +412,7 @@ const Transactions = () => {
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
+          background: 'rgba(0,0,0,0.6)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -381,100 +420,279 @@ const Transactions = () => {
         }}>
           <div style={{
             background: '#fff',
-            borderRadius: '8px',
-            padding: '24px',
+            borderRadius: '12px',
+            padding: '0',
             width: '90%',
-            maxWidth: '500px',
-            maxHeight: '80vh',
-            overflow: 'auto'
+            maxWidth: '550px',
+            maxHeight: '85vh',
+            overflow: 'hidden',
+            boxShadow: '0 20px 50px rgba(0,0,0,0.3)'
           }}>
-            <h3 style={{ marginBottom: '20px', borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
-              {selectedTransaction.status === 'PENDING' ? 'Reject Transaction' : 'Transaction Details'}
-            </h3>
+            {/* Modal Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid #eee',
+              background: selectedTransaction.type === 'WITHDRAWAL' ? '#fef3c7' : '#d1fae5',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '18px', color: '#1f2937' }}>
+                  {modalMode === 'reject' ? 'Reject Transaction' : `${selectedTransaction.type} Details`}
+                </h3>
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: '#6b7280' }}>
+                  {selectedTransaction.id}
+                </p>
+              </div>
+              <span style={{
+                padding: '6px 12px',
+                borderRadius: '20px',
+                fontSize: '12px',
+                fontWeight: '600',
+                background: selectedTransaction.type === 'WITHDRAWAL' ? '#f59e0b' : '#10b981',
+                color: '#fff'
+              }}>
+                {selectedTransaction.type}
+              </span>
+            </div>
 
-            <div style={{ marginBottom: '15px' }}>
-              <p><strong>Transaction ID:</strong> {selectedTransaction.id}</p>
-              <p><strong>Customer:</strong> {selectedTransaction.username || selectedTransaction.accountId}</p>
-              {selectedTransaction.phone && <p><strong>Phone:</strong> {selectedTransaction.phone}</p>}
-              <p><strong>Type:</strong> {selectedTransaction.type}</p>
-              <p><strong>Amount:</strong> ${selectedTransaction.amount?.toLocaleString()}</p>
-
-              {/* Bank details for withdrawals */}
-              {selectedTransaction.type === 'WITHDRAWAL' && (
+            {/* Modal Body */}
+            <div style={{ padding: '24px', maxHeight: '60vh', overflowY: 'auto' }}>
+              {loadingDetails ? (
+                <div style={{ textAlign: 'center', padding: '40px' }}>
+                  <FiRefreshCw style={{ animation: 'spin 1s linear infinite', fontSize: '24px', color: '#6b7280' }} />
+                  <p style={{ marginTop: '12px', color: '#6b7280' }}>Loading details...</p>
+                </div>
+              ) : (
                 <>
-                  <p><strong>Bank:</strong> {selectedTransaction.bank || 'N/A'}</p>
-                  {selectedTransaction.accountHolderName && (
-                    <p><strong>Account Holder:</strong> {selectedTransaction.accountHolderName}</p>
+                  {/* Amount Section */}
+                  <div style={{
+                    background: '#f9fafb',
+                    borderRadius: '10px',
+                    padding: '20px',
+                    marginBottom: '20px',
+                    textAlign: 'center'
+                  }}>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>Amount</p>
+                    <p style={{
+                      margin: '8px 0 0',
+                      fontSize: '32px',
+                      fontWeight: '700',
+                      color: selectedTransaction.type === 'WITHDRAWAL' ? '#f59e0b' : '#10b981'
+                    }}>
+                      ${(withdrawalDetails?.amount || selectedTransaction.amount)?.toLocaleString()}
+                    </p>
+                    <p style={{ margin: '8px 0 0' }}>{getStatusBadge(withdrawalDetails?.status || selectedTransaction.status)}</p>
+                  </div>
+
+                  {/* Customer Info */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h4 style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', fontWeight: '600' }}>
+                      Customer Information
+                    </h4>
+                    <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
+                      <div className="detail-row">
+                        <span>Account ID</span>
+                        <span style={{ fontFamily: 'monospace', fontSize: '12px' }}>{selectedTransaction.accountId}</span>
+                      </div>
+                      <div className="detail-row">
+                        <span>Name</span>
+                        <span>{withdrawalDetails?.accountHolderName || selectedTransaction.username || selectedTransaction.accountId}</span>
+                      </div>
+                      {selectedTransaction.phone && (
+                        <div className="detail-row">
+                          <span>Phone</span>
+                          <span>{selectedTransaction.phone}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Bank Details for Withdrawals */}
+                  {selectedTransaction.type === 'WITHDRAWAL' && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <h4 style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', fontWeight: '600' }}>
+                        Bank Details
+                      </h4>
+                      <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '12px', border: '1px solid #fcd34d' }}>
+                        <div className="detail-row">
+                          <span>Bank Name</span>
+                          <span style={{ fontWeight: '600' }}>{withdrawalDetails?.bankName || selectedTransaction.bank || 'N/A'}</span>
+                        </div>
+                        <div className="detail-row">
+                          <span>Account Holder</span>
+                          <span style={{ fontWeight: '600' }}>{withdrawalDetails?.accountHolderName || selectedTransaction.accountHolderName || 'N/A'}</span>
+                        </div>
+                        {(withdrawalDetails?.maskedBsb || selectedTransaction.bsb) && (
+                          <div className="detail-row">
+                            <span>BSB</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
+                              {withdrawalDetails?.maskedBsb || selectedTransaction.bsb}
+                            </span>
+                          </div>
+                        )}
+                        {(withdrawalDetails?.maskedAccountNumber || selectedTransaction.bankAccount) && (
+                          <div className="detail-row">
+                            <span>Account Number</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
+                              {withdrawalDetails?.maskedAccountNumber || selectedTransaction.bankAccount}
+                            </span>
+                          </div>
+                        )}
+                        {(withdrawalDetails?.maskedPayId || selectedTransaction.payId) && (
+                          <div className="detail-row">
+                            <span>PayID</span>
+                            <span style={{ fontFamily: 'monospace', fontWeight: '600', color: '#2563eb' }}>
+                              {withdrawalDetails?.maskedPayId || selectedTransaction.payId}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  {selectedTransaction.bsb && (
-                    <p><strong>BSB:</strong> {selectedTransaction.bsb}</p>
+
+                  {/* Balance Info */}
+                  {withdrawalDetails && (withdrawalDetails.balanceBefore != null || withdrawalDetails.balanceAfter != null) && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <h4 style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', fontWeight: '600' }}>
+                        Balance Impact
+                      </h4>
+                      <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
+                        {withdrawalDetails.balanceBefore != null && (
+                          <div className="detail-row">
+                            <span>Balance Before</span>
+                            <span>${withdrawalDetails.balanceBefore?.toLocaleString()}</span>
+                          </div>
+                        )}
+                        {withdrawalDetails.balanceAfter != null && (
+                          <div className="detail-row">
+                            <span>Balance After</span>
+                            <span>${withdrawalDetails.balanceAfter?.toLocaleString()}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  {selectedTransaction.bankAccount && (
-                    <p><strong>Account Number:</strong> {selectedTransaction.bankAccount}</p>
+
+                  {/* Timeline */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <h4 style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', fontWeight: '600' }}>
+                      Timeline
+                    </h4>
+                    <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
+                      <div className="detail-row">
+                        <span>Created</span>
+                        <span>{formatDate(withdrawalDetails?.createdAt || selectedTransaction.createdAt)}</span>
+                      </div>
+                      {(withdrawalDetails?.reviewedAt || selectedTransaction.processedAt) && (
+                        <div className="detail-row">
+                          <span>Reviewed</span>
+                          <span>{formatDate(withdrawalDetails?.reviewedAt || selectedTransaction.processedAt)}</span>
+                        </div>
+                      )}
+                      {withdrawalDetails?.completedAt && (
+                        <div className="detail-row">
+                          <span>Completed</span>
+                          <span>{formatDate(withdrawalDetails.completedAt)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Admin Notes */}
+                  {(withdrawalDetails?.adminNotes || withdrawalDetails?.externalReference) && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <h4 style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', fontWeight: '600' }}>
+                        Admin Notes
+                      </h4>
+                      <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
+                        {withdrawalDetails?.adminNotes && (
+                          <p style={{ margin: 0, fontSize: '13px' }}>{withdrawalDetails.adminNotes}</p>
+                        )}
+                        {withdrawalDetails?.externalReference && (
+                          <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#6b7280' }}>
+                            Ref: {withdrawalDetails.externalReference}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
-                  {selectedTransaction.payId && (
-                    <p><strong>PayID:</strong> {selectedTransaction.payId}</p>
+
+                  {/* Reject Reason Input */}
+                  {modalMode === 'reject' && selectedTransaction.status === 'PENDING' && (
+                    <div style={{ marginBottom: '15px' }}>
+                      <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '14px' }}>
+                        Rejection Reason:
+                      </label>
+                      <textarea
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        placeholder="Enter reason for rejection (will be shown to user)..."
+                        style={{
+                          width: '100%',
+                          padding: '12px',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          minHeight: '80px',
+                          resize: 'vertical',
+                          fontSize: '14px'
+                        }}
+                      />
+                    </div>
                   )}
                 </>
               )}
-
-              {selectedTransaction.type !== 'WITHDRAWAL' && (
-                <p><strong>Bank:</strong> {selectedTransaction.bank || 'N/A'}</p>
-              )}
-
-              <p><strong>Payment Method:</strong> {selectedTransaction.paymentMethod || 'N/A'}</p>
-              <p><strong>Status:</strong> {getStatusBadge(selectedTransaction.status)}</p>
-              <p><strong>Date:</strong> {formatDate(selectedTransaction.createdAt)}</p>
-              {selectedTransaction.processedAt && (
-                <p><strong>Processed:</strong> {formatDate(selectedTransaction.processedAt)}</p>
-              )}
-              {selectedTransaction.rejectionReason && (
-                <p><strong>Rejection Reason:</strong> {selectedTransaction.rejectionReason}</p>
-              )}
-              {selectedTransaction.adminNotes && (
-                <p><strong>Admin Notes:</strong> {selectedTransaction.adminNotes}</p>
-              )}
             </div>
 
-            {selectedTransaction.status === 'PENDING' && (
-              <div style={{ marginBottom: '15px' }}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500' }}>
-                  Rejection Reason:
-                </label>
-                <textarea
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Enter reason for rejection..."
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #ddd',
-                    borderRadius: '4px',
-                    minHeight: '80px',
-                    resize: 'vertical'
-                  }}
-                />
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            {/* Modal Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid #eee',
+              display: 'flex',
+              gap: '10px',
+              justifyContent: 'flex-end',
+              background: '#f9fafb'
+            }}>
               <button
                 className="btn btn-secondary"
                 onClick={() => {
                   setShowModal(false);
                   setSelectedTransaction(null);
                   setRejectReason('');
+                  setWithdrawalDetails(null);
                 }}
               >
                 Close
               </button>
-              {selectedTransaction.status === 'PENDING' && (
+              {selectedTransaction.status === 'PENDING' && modalMode === 'view' && (
+                <>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => setModalMode('reject')}
+                  >
+                    <FiX style={{ marginRight: '4px' }} /> Reject
+                  </button>
+                  <button
+                    className="btn btn-success"
+                    onClick={() => handleApprove(selectedTransaction)}
+                    disabled={processing === selectedTransaction.id}
+                  >
+                    {processing === selectedTransaction.id ? (
+                      <><FiRefreshCw className="spin" style={{ marginRight: '4px' }} /> Processing...</>
+                    ) : (
+                      <><FiCheck style={{ marginRight: '4px' }} /> Approve</>
+                    )}
+                  </button>
+                </>
+              )}
+              {modalMode === 'reject' && selectedTransaction.status === 'PENDING' && (
                 <button
                   className="btn btn-danger"
                   onClick={handleReject}
                   disabled={processing === selectedTransaction.id}
                 >
-                  {processing === selectedTransaction.id ? 'Rejecting...' : 'Reject Transaction'}
+                  {processing === selectedTransaction.id ? 'Rejecting...' : 'Confirm Rejection'}
                 </button>
               )}
             </div>
@@ -536,6 +754,52 @@ const Transactions = () => {
         }
         .action-btn.view:hover:not(:disabled) {
           background: #4b5563;
+        }
+        .detail-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 0;
+          border-bottom: 1px solid rgba(0,0,0,0.05);
+          font-size: 13px;
+        }
+        .detail-row:last-child {
+          border-bottom: none;
+        }
+        .detail-row span:first-child {
+          color: #6b7280;
+        }
+        .detail-row span:last-child {
+          color: #1f2937;
+          font-weight: 500;
+          text-align: right;
+        }
+        .btn-success {
+          background: #10b981;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn-success:hover {
+          background: #059669;
+        }
+        .btn-danger {
+          background: #ef4444;
+          color: white;
+          border: none;
+          padding: 10px 20px;
+          border-radius: 6px;
+          font-weight: 500;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+        }
+        .btn-danger:hover {
+          background: #dc2626;
         }
         @media (max-width: 768px) {
           .action-btns {
