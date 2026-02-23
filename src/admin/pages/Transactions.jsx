@@ -513,39 +513,90 @@ const Transactions = () => {
                   {selectedTransaction.type === 'WITHDRAWAL' && (
                     <div style={{ marginBottom: '20px' }}>
                       <h4 style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', fontWeight: '600' }}>
-                        Bank Details
+                        Bank Details (For Processing)
                       </h4>
-                      <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '12px', border: '1px solid #fcd34d' }}>
+                      <div style={{ background: '#fef3c7', borderRadius: '8px', padding: '16px', border: '1px solid #fcd34d' }}>
                         <div className="detail-row">
                           <span>Bank Name</span>
-                          <span style={{ fontWeight: '600' }}>{withdrawalDetails?.bankName || selectedTransaction.bank || 'N/A'}</span>
+                          <span style={{ fontWeight: '600', fontSize: '14px' }}>
+                            {withdrawalDetails?.bankName || selectedTransaction.bank || 'N/A'}
+                          </span>
                         </div>
                         <div className="detail-row">
                           <span>Account Holder</span>
-                          <span style={{ fontWeight: '600' }}>{withdrawalDetails?.accountHolderName || selectedTransaction.accountHolderName || 'N/A'}</span>
+                          <span style={{ fontWeight: '600', fontSize: '14px' }}>
+                            {withdrawalDetails?.accountHolderName || selectedTransaction.accountHolderName || 'N/A'}
+                          </span>
                         </div>
-                        {(withdrawalDetails?.maskedBsb || selectedTransaction.bsb) && (
+
+                        {/* BSB - prefer original transaction data (unmasked) */}
+                        {(selectedTransaction.bsb || withdrawalDetails?.maskedBsb) && (
                           <div className="detail-row">
                             <span>BSB</span>
-                            <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
-                              {withdrawalDetails?.maskedBsb || selectedTransaction.bsb}
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: '700',
+                              fontSize: '16px',
+                              color: '#1f2937',
+                              background: '#fff',
+                              padding: '4px 8px',
+                              borderRadius: '4px'
+                            }}>
+                              {selectedTransaction.bsb || withdrawalDetails?.maskedBsb}
                             </span>
                           </div>
                         )}
-                        {(withdrawalDetails?.maskedAccountNumber || selectedTransaction.bankAccount) && (
+
+                        {/* Account Number - prefer original transaction data (unmasked) */}
+                        {(selectedTransaction.bankAccount || withdrawalDetails?.maskedAccountNumber) && (
                           <div className="detail-row">
                             <span>Account Number</span>
-                            <span style={{ fontFamily: 'monospace', fontWeight: '600' }}>
-                              {withdrawalDetails?.maskedAccountNumber || selectedTransaction.bankAccount}
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: '700',
+                              fontSize: '16px',
+                              color: '#1f2937',
+                              background: '#fff',
+                              padding: '4px 8px',
+                              borderRadius: '4px'
+                            }}>
+                              {selectedTransaction.bankAccount || withdrawalDetails?.maskedAccountNumber}
                             </span>
                           </div>
                         )}
-                        {(withdrawalDetails?.maskedPayId || selectedTransaction.payId) && (
+
+                        {/* PayID - prefer original transaction data (unmasked) */}
+                        {(selectedTransaction.payId || withdrawalDetails?.maskedPayId) && (
                           <div className="detail-row">
                             <span>PayID</span>
-                            <span style={{ fontFamily: 'monospace', fontWeight: '600', color: '#2563eb' }}>
-                              {withdrawalDetails?.maskedPayId || selectedTransaction.payId}
+                            <span style={{
+                              fontFamily: 'monospace',
+                              fontWeight: '700',
+                              fontSize: '16px',
+                              color: '#2563eb',
+                              background: '#fff',
+                              padding: '4px 8px',
+                              borderRadius: '4px'
+                            }}>
+                              {selectedTransaction.payId || withdrawalDetails?.maskedPayId}
                             </span>
+                          </div>
+                        )}
+
+                        {/* Show warning if data appears masked */}
+                        {(withdrawalDetails?.maskedBsb?.includes('*') ||
+                          withdrawalDetails?.maskedAccountNumber?.includes('*') ||
+                          (withdrawalDetails?.maskedPayId?.includes('*') && !selectedTransaction.payId)) && (
+                          <div style={{
+                            marginTop: '12px',
+                            padding: '10px',
+                            background: '#fef2f2',
+                            borderRadius: '6px',
+                            border: '1px solid #fecaca',
+                            fontSize: '12px',
+                            color: '#b91c1c'
+                          }}>
+                            ⚠️ Some bank details are masked. Contact backend team to enable full admin access.
                           </div>
                         )}
                       </div>

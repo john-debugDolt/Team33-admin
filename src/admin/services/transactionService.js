@@ -213,6 +213,13 @@ export const transactionService = {
         const withdrawId = rawId && !String(rawId).startsWith('WD') && !String(rawId).startsWith('WTH')
           ? `WD${rawId}`
           : String(rawId);
+
+        // Get bank details - prefer unmasked values, fall back to masked
+        // The list endpoint often has full values in maskedPayId field
+        const payId = w.payId || w.maskedPayId || null;
+        const bsb = w.bsb || (w.maskedBsb && !w.maskedBsb.includes('*') ? w.maskedBsb : null);
+        const bankAccount = w.accountNumber || (w.maskedAccountNumber && !w.maskedAccountNumber.includes('*') ? w.maskedAccountNumber : null);
+
         return {
           id: withdrawId,
           originalId: rawId,
@@ -226,10 +233,16 @@ export const transactionService = {
           createdAt: w.createdAt,
           completedAt: w.completedAt,
           bank: w.bankName || 'Bank Transfer',
-          bankAccount: w.accountNumber,
-          bsb: w.bsb,
-          payId: w.payId,
+          bankAccount: bankAccount,
+          bsb: bsb,
+          payId: payId,
+          // Keep masked values as fallback
+          maskedBsb: w.maskedBsb,
+          maskedAccountNumber: w.maskedAccountNumber,
+          maskedPayId: w.maskedPayId,
           accountHolderName: w.accountHolderName,
+          balanceBefore: w.balanceBefore,
+          balanceAfter: w.balanceAfter,
           currency: w.currency || 'AUD'
         };
       }));
