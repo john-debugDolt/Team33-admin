@@ -495,6 +495,76 @@ export const getBetHistoryCount = (accountId) =>
   apiRequest(`/api/wallets/commissions/bet-history/${accountId}/count`);
 
 // ============================================
+// BET HISTORY V2 — admin-service /api/admin/bet-history/*
+// Per-bet seamless-wallet ledger across all 9 providers
+// ============================================
+
+const buildQuery = (params = {}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') q.append(k, v);
+  });
+  const s = q.toString();
+  return s ? `?${s}` : '';
+};
+
+/**
+ * GET /api/admin/bet-history/providers
+ * Returns the canonical list of seamless providers with bet history.
+ */
+export const getBetHistoryProviders = () =>
+  apiRequest('/api/admin/bet-history/providers');
+
+/**
+ * GET /api/admin/bet-history/{provider}
+ * Paginated list of callback rows for one provider, newest first.
+ *
+ * @param {string} provider - One of richgaming, uuslot, megah5, epicwin, wfgaming, metagaming, advantplay, evo888h5, clotplay
+ * @param {string} accountId - Required
+ * @param {Object} params - { callbackType, status, limit, offset }
+ */
+export const getBetHistoryByProvider = (provider, accountId, params = {}) =>
+  apiRequest(`/api/admin/bet-history/${provider}${buildQuery({ accountId, ...params })}`);
+
+/**
+ * GET /api/admin/bet-history/{provider}/count
+ * Total row count for one provider (uses same filters as the list).
+ */
+export const getBetHistoryByProviderCount = (provider, accountId, params = {}) =>
+  apiRequest(`/api/admin/bet-history/${provider}/count${buildQuery({ accountId, ...params })}`);
+
+/**
+ * GET /api/admin/bet-history/summary/{accountId}
+ * Cross-provider snapshot: last-N rows from every provider plus per-provider totals.
+ */
+export const getBetHistorySummary = (accountId, params = {}) =>
+  apiRequest(`/api/admin/bet-history/summary/${accountId}${buildQuery(params)}`);
+
+/**
+ * GET /api/admin/transfer-history/{provider}
+ * Sister endpoint for transfer-wallet providers (jdb, scr888h5).
+ *
+ * @param {string} provider - 'jdb' or 'scr888h5'
+ * @param {string} accountId - Required
+ * @param {Object} params - { direction: 'DEPOSIT'|'WITHDRAW', status, limit, offset }
+ */
+export const getTransferHistoryByProvider = (provider, accountId, params = {}) =>
+  apiRequest(`/api/admin/transfer-history/${provider}${buildQuery({ accountId, ...params })}`);
+
+/**
+ * GET /api/admin/transfer-history/{provider}/count
+ */
+export const getTransferHistoryByProviderCount = (provider, accountId, params = {}) =>
+  apiRequest(`/api/admin/transfer-history/${provider}/count${buildQuery({ accountId, ...params })}`);
+
+/**
+ * GET /api/admin/transfer-history/{accountId}
+ * Combined transfer-wallet snapshot across jdb + scr888h5.
+ */
+export const getTransferHistorySummary = (accountId, params = {}) =>
+  apiRequest(`/api/admin/transfer-history/${accountId}${buildQuery(params)}`);
+
+// ============================================
 // CHAT MANAGEMENT
 // Base URL: /api/admin/chats
 // ============================================

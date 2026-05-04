@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { FiX, FiUser, FiPhone, FiCalendar, FiCopy, FiCheck, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { formatDateTime } from '../utils/dateUtils';
 import {
@@ -7,6 +7,12 @@ import {
   getWithdrawalsForAccount,
   getBetHistory,
   getBetHistoryCount,
+  getBetHistoryProviders,
+  getBetHistoryByProvider,
+  getBetHistoryByProviderCount,
+  getBetHistorySummary,
+  getTransferHistoryByProvider,
+  getTransferHistorySummary,
   getCommissionEarnings,
   getPendingCommissionTotal,
   getReferralsByPrincipal,
@@ -88,6 +94,21 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
 
   const [walletData, setWalletData] = useState(null);
   const [transactions, setTransactions] = useState([]);
+
+  // ===== Bet History v2 (admin-service) =====
+  const [betProviders, setBetProviders] = useState([]); // ['richgaming','uuslot',...]
+  const [betProvider, setBetProvider] = useState('');   // selected provider, '' = overview
+  const [betSummary, setBetSummary] = useState(null);   // /summary/{accountId} response
+  const [betRows, setBetRows] = useState([]);           // raw callback rows for selected provider
+  const [betRowsTotal, setBetRowsTotal] = useState(0);
+  const [betFilterCallback, setBetFilterCallback] = useState(''); // BET / RESULT / ROLLBACK / ...
+  const [betFilterStatus, setBetFilterStatus] = useState('');     // COMPLETED / PENDING / FAILED
+  const [betViewMode, setBetViewMode] = useState('rounds');       // 'rounds' or 'raw'
+  const [betExpandedId, setBetExpandedId] = useState(null);
+  const [betPage, setBetPage] = useState(0);
+  const [transferRows, setTransferRows] = useState({ jdb: [], scr888h5: [] }); // for transfer-wallet section
+
+  // Legacy state still used by the old wallet-service fetch (kept until removed)
   const [betHistory, setBetHistory] = useState([]);
   const [betHistoryTotal, setBetHistoryTotal] = useState(0);
   const [betHistoryPage, setBetHistoryPage] = useState(0);
@@ -116,6 +137,43 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
 
   // Pagination settings
   const BET_HISTORY_LIMIT = 20;
+  const BET_SUMMARY_LIMIT = 5;
+  const TRANSFER_WALLET_PROVIDERS = ['jdb', 'scr888h5'];
+
+  // Pair raw BET → RESULT callbacks into rounds (per backend integration guide §3)
+  const pairRoundsFromCallbacks = (rows) => {
+    const bets = new Map();
+    const results = new Map();
+    rows.forEach((r) => {
+      if (r.callbackType === 'BET') bets.set(r.providerTxId, r);
+      else if (r.callbackType === 'RESULT' && r.relatedTxId) results.set(r.relatedTxId, r);
+    });
+
+    return [...bets.values()]
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+      .map((bet) => {
+        const result = results.get(bet.providerTxId) || null;
+        const betAmt = Number(bet.amount) || 0;
+        const winAmt = result ? (Number(result.amount) || 0) : 0;
+        return {
+          roundId: bet.providerTxId,
+          playedAt: bet.createdAt,
+          bet: betAmt,
+          win: winAmt,
+          netPL: winAmt - betAmt,
+          balanceBefore: Number(bet.balanceBefore) || 0,
+          balanceAfter: result ? (Number(result.balanceAfter) || 0) : (Number(bet.balanceAfter) || 0),
+          outcome: winAmt > betAmt ? 'win' : winAmt > 0 ? 'partial' : 'loss',
+          settled: Boolean(result),
+          status: bet.status,
+          betRow: bet,
+          resultRow: result,
+        };
+      });
+  };
+
+  const fmtMoney = (n) => `$${(Number(n) || 0).toFixed(2)}`;
+  const shortId = (id, n = 12) => (id ? String(id).slice(0, n) + (String(id).length > n ? '…' : '') : '-');
 
   // Tab definitions
   const tabs = [
@@ -226,27 +284,84 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
             setTransactions(allTx);
             break;
 
-          case 'BET HISTORY':
-            // Fetch bet history with pagination and total count
-            const [betResult, countResult] = await Promise.all([
-              getBetHistory(user.accountId, {
-                limit: BET_HISTORY_LIMIT,
-                offset: betHistoryPage * BET_HISTORY_LIMIT
-              }),
-              getBetHistoryCount(user.accountId)
-            ]);
+          case 'BET HISTORY': {
+            // Load provider list once, summary always; per-provider rows only when one is selected.
+            const tasks = [];
 
-            if (betResult.success) {
-              setBetHistory(Array.isArray(betResult.data) ? betResult.data : []);
+            if (betProviders.length === 0) {
+              tasks.push(
+                getBetHistoryProviders().then((r) => {
+                  if (r.success) setBetProviders(r.data?.providers || []);
+                })
+              );
             }
-            if (countResult.success) {
-              // Count could be a number or object with count property
-              const count = typeof countResult.data === 'number'
-                ? countResult.data
-                : countResult.data?.count || 0;
-              setBetHistoryTotal(count);
+
+            // Cross-provider snapshot (drives the Overview header + per-provider totals)
+            tasks.push(
+              getBetHistorySummary(user.accountId, {
+                limit: BET_SUMMARY_LIMIT,
+                ...(betFilterCallback ? { callbackType: betFilterCallback } : {}),
+                ...(betFilterStatus ? { status: betFilterStatus } : {}),
+              }).then((r) => {
+                if (r.success) setBetSummary(r.data || null);
+              })
+            );
+
+            // Transfer-wallet snapshot in parallel
+            tasks.push(
+              getTransferHistorySummary(user.accountId, { limit: BET_SUMMARY_LIMIT }).then((r) => {
+                if (r.success && r.data) {
+                  setTransferRows({
+                    jdb: r.data.jdb?.rows || [],
+                    scr888h5: r.data.scr888h5?.rows || [],
+                  });
+                }
+              })
+            );
+
+            // Selected provider — paginated rows + count
+            if (betProvider) {
+              const isTransfer = TRANSFER_WALLET_PROVIDERS.includes(betProvider);
+              const filterParams = {
+                ...(betFilterStatus ? { status: betFilterStatus } : {}),
+                ...(!isTransfer && betFilterCallback ? { callbackType: betFilterCallback } : {}),
+                limit: BET_HISTORY_LIMIT,
+                offset: betPage * BET_HISTORY_LIMIT,
+              };
+
+              const listFn = isTransfer ? getTransferHistoryByProvider : getBetHistoryByProvider;
+              const countFn = isTransfer
+                ? null // transfer-history count endpoint exists per provider but is not strictly needed for the snapshot view
+                : getBetHistoryByProviderCount;
+
+              tasks.push(
+                listFn(betProvider, user.accountId, filterParams).then((r) => {
+                  setBetRows(r.success && Array.isArray(r.data) ? r.data : []);
+                })
+              );
+
+              if (countFn) {
+                const countParams = {
+                  ...(betFilterStatus ? { status: betFilterStatus } : {}),
+                  ...(betFilterCallback ? { callbackType: betFilterCallback } : {}),
+                };
+                tasks.push(
+                  countFn(betProvider, user.accountId, countParams).then((r) => {
+                    setBetRowsTotal(r.success ? (r.data?.count ?? 0) : 0);
+                  })
+                );
+              } else {
+                setBetRowsTotal(0);
+              }
+            } else {
+              // Overview-only view — clear per-provider rows
+              setBetRows([]);
+              setBetRowsTotal(0);
             }
+
+            await Promise.all(tasks);
             break;
+          }
 
           case 'COMMISSION':
             // Fetch commission earnings, pending total, referrals, and referrer
@@ -433,7 +548,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
     };
 
     fetchTabData();
-  }, [activeTab, user?.accountId]);
+  }, [activeTab, user?.accountId, betProvider, betFilterCallback, betFilterStatus, betPage]);
 
   // Render tab content based on active tab
   const renderTabContent = () => {
@@ -563,82 +678,275 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
           </div>
         );
 
-      case 'BET HISTORY':
-        const totalPages = Math.ceil(betHistoryTotal / BET_HISTORY_LIMIT);
+      case 'BET HISTORY': {
+        const isTransfer = TRANSFER_WALLET_PROVIDERS.includes(betProvider);
+        const totalPages = Math.max(1, Math.ceil(betRowsTotal / BET_HISTORY_LIMIT));
+        const grandTotal = betSummary?.grandTotal ?? 0;
+        const overviewProviders = betProviders.filter((p) => betSummary?.[p]);
+        const rounds = !isTransfer && betViewMode === 'rounds' ? pairRoundsFromCallbacks(betRows) : [];
+        const transferHasRows = transferRows.jdb.length > 0 || transferRows.scr888h5.length > 0;
+
+        const renderRawRow = (row) => {
+          const isExpanded = betExpandedId === row.id;
+          const failedClass = row.status === 'FAILED' ? 'row-failed' : '';
+          const reversal = row.callbackType === 'ROLLBACK' || row.callbackType === 'CANCEL_BETNSETTLE';
+          return (
+            <Fragment key={row.id}>
+              <tr
+                className={`bh-row ${failedClass} ${reversal ? 'row-reversal' : ''}`}
+                onClick={() => setBetExpandedId(isExpanded ? null : row.id)}
+              >
+                <td>{formatDateTime(row.createdAt)}</td>
+                <td><span className={`bh-cb-badge cb-${row.callbackType?.toLowerCase()}`}>{row.callbackType}</span></td>
+                <td className="mono small" title={row.providerTxId}>{shortId(row.providerTxId)}</td>
+                <td className="mono small" title={row.relatedTxId || ''}>{row.relatedTxId ? shortId(row.relatedTxId) : '-'}</td>
+                <td>{fmtMoney(row.amount)}</td>
+                <td>{fmtMoney(row.balanceBefore)} → {fmtMoney(row.balanceAfter)}</td>
+                <td>
+                  <span className={`status-badge ${row.status?.toLowerCase()}`} title={row.lastError || ''}>
+                    {row.status === 'COMPLETED' ? '✓' : row.status === 'PENDING' ? '⏳' : '✗'} {row.status}
+                  </span>
+                </td>
+              </tr>
+              {isExpanded && (
+                <tr className="bh-row-detail">
+                  <td colSpan={7}>
+                    <div className="bh-detail-grid">
+                      <div><label>Internal ID</label><span className="mono">{row.id}</span></div>
+                      <div><label>Wallet Tx ID</label><span className="mono">{row.walletTxId ?? '—'}</span></div>
+                      <div><label>Response</label><span>{row.responseStatus} · {row.responseDescription}</span></div>
+                      <div><label>Updated</label><span>{formatDateTime(row.updatedAt)}</span></div>
+                      {row.lastError && (
+                        <div className="bh-detail-error"><label>Last Error</label><span>{row.lastError}</span></div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        };
+
+        const renderTransferRow = (row) => (
+          <tr key={row.id} className={`bh-row ${row.status === 'FAILED' ? 'row-failed' : ''}`}>
+            <td>{formatDateTime(row.createdAt)}</td>
+            <td>
+              <span className={`bh-cb-badge cb-${(row.direction || '').toLowerCase()}`}>
+                {row.direction === 'DEPOSIT' ? '↗ DEPOSIT' : row.direction === 'WITHDRAW' ? '↙ WITHDRAW' : row.direction}
+              </span>
+            </td>
+            <td className="mono small">{shortId(row.providerTxId || row.id)}</td>
+            <td>{fmtMoney(row.amount)}</td>
+            <td>{fmtMoney(row.balanceBefore)} → {fmtMoney(row.balanceAfter)}</td>
+            <td>
+              <span className={`status-badge ${row.status?.toLowerCase()}`} title={row.lastError || ''}>
+                {row.status}
+              </span>
+            </td>
+          </tr>
+        );
+
         return (
-          <div className="bet-history-section">
-            {/* Summary stats */}
-            <div className="bet-history-stats">
-              <span>Total Records: <strong>{betHistoryTotal}</strong></span>
-              <span>Showing: <strong>{betHistory.length}</strong> of {betHistoryTotal}</span>
+          <div className="bet-history-section bh-v2">
+            {/* ===== Overview header — provider chips + grand total ===== */}
+            <div className="bh-overview">
+              <div className="bh-overview-header">
+                <div>
+                  <h3>Activity Overview</h3>
+                  <span className="bh-grand">{grandTotal.toLocaleString()} callbacks across all providers</span>
+                </div>
+                <div className="bh-overview-actions">
+                  <select
+                    className="bh-select"
+                    value={betFilterCallback}
+                    onChange={(e) => { setBetFilterCallback(e.target.value); setBetPage(0); }}
+                  >
+                    <option value="">All event types</option>
+                    <option value="BET">BET</option>
+                    <option value="RESULT">RESULT</option>
+                    <option value="ROLLBACK">ROLLBACK</option>
+                    <option value="BONUS">BONUS</option>
+                    <option value="JACKPOT">JACKPOT</option>
+                    <option value="BETNSETTLE">BETNSETTLE</option>
+                    <option value="CANCEL_BETNSETTLE">CANCEL_BETNSETTLE</option>
+                  </select>
+                  <select
+                    className="bh-select"
+                    value={betFilterStatus}
+                    onChange={(e) => { setBetFilterStatus(e.target.value); setBetPage(0); }}
+                  >
+                    <option value="">All statuses</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="FAILED">Failed</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bh-provider-grid">
+                {overviewProviders.map((p) => {
+                  const total = betSummary[p]?.total ?? 0;
+                  const isActive = betProvider === p;
+                  return (
+                    <button
+                      key={p}
+                      className={`bh-provider-chip ${total === 0 ? 'empty' : ''} ${isActive ? 'active' : ''}`}
+                      onClick={() => { setBetProvider(isActive ? '' : p); setBetPage(0); setBetExpandedId(null); }}
+                    >
+                      <span className="bh-chip-name">{p}</span>
+                      <span className="bh-chip-count">{total.toLocaleString()}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Transfer-wallet section */}
+              {transferHasRows && (
+                <div className="bh-transfer-strip">
+                  <span className="bh-transfer-label">Transfer wallets:</span>
+                  <button
+                    className={`bh-provider-chip ${transferRows.jdb.length === 0 ? 'empty' : ''} ${betProvider === 'jdb' ? 'active' : ''}`}
+                    onClick={() => { setBetProvider(betProvider === 'jdb' ? '' : 'jdb'); setBetPage(0); }}
+                  >
+                    <span className="bh-chip-name">jdb</span>
+                    <span className="bh-chip-count">{transferRows.jdb.length}+</span>
+                  </button>
+                  <button
+                    className={`bh-provider-chip ${transferRows.scr888h5.length === 0 ? 'empty' : ''} ${betProvider === 'scr888h5' ? 'active' : ''}`}
+                    onClick={() => { setBetProvider(betProvider === 'scr888h5' ? '' : 'scr888h5'); setBetPage(0); }}
+                  >
+                    <span className="bh-chip-name">scr888h5</span>
+                    <span className="bh-chip-count">{transferRows.scr888h5.length}+</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {betHistory.length === 0 ? (
-              <div className="empty-state">No bet history found</div>
+            {/* ===== Per-provider detail ===== */}
+            {!betProvider ? (
+              <div className="empty-state">Select a provider above to see their bet ledger.</div>
             ) : (
-              <>
-                <table className="data-table compact">
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Round ID</th>
-                      <th>Game</th>
-                      <th>Bet</th>
-                      <th>Win</th>
-                      <th>Balance After</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {betHistory.map((bet, idx) => {
-                      const profit = (bet.winAmount || 0) - (bet.betAmount || 0);
-                      return (
-                        <tr key={bet.roundId || bet.id || idx}>
-                          <td>{formatDateTime(bet.createdAt)}</td>
-                          <td className="mono small" title={bet.roundId}>{(bet.roundId || '-').substring(0, 12)}...</td>
-                          <td>{bet.gameSlug || '-'}</td>
-                          <td>${parseFloat(bet.betAmount || 0).toFixed(2)}</td>
-                          <td className={bet.winAmount > 0 ? 'text-success' : ''}>
-                            ${parseFloat(bet.winAmount || 0).toFixed(2)}
-                          </td>
-                          <td>${parseFloat(bet.balanceAfter || 0).toFixed(2)}</td>
-                          <td>
-                            <span className={`status-badge ${bet.status?.toLowerCase()}`}>
-                              {bet.status || 'SETTLED'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div className="bh-detail">
+                <div className="bh-detail-header">
+                  <h3>
+                    <span className="bh-provider-name">{betProvider}</span>
+                    <span className="bh-detail-count">{betRowsTotal.toLocaleString()} {isTransfer ? 'transfers' : 'callbacks'}</span>
+                  </h3>
+                  {!isTransfer && (
+                    <div className="bh-view-toggle">
+                      <button
+                        className={`bh-toggle-btn ${betViewMode === 'rounds' ? 'active' : ''}`}
+                        onClick={() => setBetViewMode('rounds')}
+                      >
+                        Rounds
+                      </button>
+                      <button
+                        className={`bh-toggle-btn ${betViewMode === 'raw' ? 'active' : ''}`}
+                        onClick={() => setBetViewMode('raw')}
+                      >
+                        Raw callbacks
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {betRows.length === 0 ? (
+                  <div className="empty-state">No {isTransfer ? 'transfers' : 'callbacks'} for this provider with the current filters.</div>
+                ) : isTransfer ? (
+                  <table className="data-table compact bh-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Direction</th>
+                        <th>Tx ID</th>
+                        <th>Amount</th>
+                        <th>Balance</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>{betRows.map(renderTransferRow)}</tbody>
+                  </table>
+                ) : betViewMode === 'rounds' ? (
+                  <table className="data-table compact bh-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Round ID</th>
+                        <th>Bet</th>
+                        <th>Win</th>
+                        <th>P/L</th>
+                        <th>Balance</th>
+                        <th>Outcome</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rounds.map((r) => {
+                        const isBigWin = r.win > r.bet * 5 && r.bet > 0;
+                        const plClass = r.netPL > 0 ? 'text-success' : r.netPL < 0 ? 'text-danger' : '';
+                        return (
+                          <tr key={r.roundId} className={!r.settled ? 'row-pending' : ''}>
+                            <td>{formatDateTime(r.playedAt)}</td>
+                            <td className="mono small" title={r.roundId}>{shortId(r.roundId)}</td>
+                            <td>{fmtMoney(r.bet)}</td>
+                            <td className={r.win > 0 ? 'text-success' : ''}>
+                              {fmtMoney(r.win)} {isBigWin && <span title="Big win!">🎰</span>}
+                            </td>
+                            <td className={plClass}>{r.netPL >= 0 ? '+' : ''}{fmtMoney(r.netPL)}</td>
+                            <td className="bh-balance">{fmtMoney(r.balanceBefore)} → {fmtMoney(r.balanceAfter)}</td>
+                            <td>
+                              <span className={`bh-outcome out-${r.outcome}`}>
+                                {r.settled ? r.outcome : 'pending'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className="data-table compact bh-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Tx ID</th>
+                        <th>Related</th>
+                        <th>Amount</th>
+                        <th>Balance</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>{betRows.map(renderRawRow)}</tbody>
+                  </table>
+                )}
 
                 {/* Pagination */}
-                {totalPages > 1 && (
+                {!isTransfer && totalPages > 1 && (
                   <div className="pagination">
                     <button
                       className="pagination-btn"
-                      onClick={() => handleBetHistoryPageChange(betHistoryPage - 1)}
-                      disabled={betHistoryPage === 0}
+                      onClick={() => setBetPage(Math.max(0, betPage - 1))}
+                      disabled={betPage === 0}
                     >
                       <FiChevronLeft /> Previous
                     </button>
                     <span className="pagination-info">
-                      Page {betHistoryPage + 1} of {totalPages}
+                      Page {betPage + 1} of {totalPages}
                     </span>
                     <button
                       className="pagination-btn"
-                      onClick={() => handleBetHistoryPageChange(betHistoryPage + 1)}
-                      disabled={betHistoryPage >= totalPages - 1}
+                      onClick={() => setBetPage(betPage + 1)}
+                      disabled={betPage >= totalPages - 1}
                     >
                       Next <FiChevronRight />
                     </button>
                   </div>
                 )}
-              </>
+              </div>
             )}
           </div>
         );
+      }
 
       case 'COMMISSION':
         // Calculate totals from commission data - handle both commissionAmount and amount field names

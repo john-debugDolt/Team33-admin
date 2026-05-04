@@ -4122,3 +4122,285 @@ img, video, iframe {
     min-height: 14px !important;
   }
 }
+
+/* ==========================================================================
+   Bet History v2 (admin-service /api/admin/bet-history/*)
+   ========================================================================== */
+
+.bh-v2 { display: flex; flex-direction: column; gap: 20px; }
+
+.bh-overview {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.06), rgba(16, 185, 129, 0.02));
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.bh-overview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.bh-overview-header h3 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: #d1fae5;
+}
+
+.bh-grand {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.bh-overview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bh-select {
+  background: rgba(0, 0, 0, 0.4);
+  color: #e5e7eb;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 7px 11px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bh-select:focus {
+  outline: none;
+  border-color: rgba(52, 211, 153, 0.6);
+}
+
+.bh-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.bh-provider-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.bh-provider-chip:hover:not(.empty) {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(16, 185, 129, 0.08);
+  transform: translateY(-1px);
+}
+
+.bh-provider-chip.empty {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bh-provider-chip.active {
+  border-color: rgba(52, 211, 153, 0.85);
+  background: rgba(16, 185, 129, 0.15);
+  box-shadow: 0 0 0 1px rgba(52, 211, 153, 0.4) inset;
+}
+
+.bh-chip-name {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #e5e7eb;
+}
+
+.bh-chip-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: #34d399;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.bh-transfer-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+}
+
+.bh-transfer-label {
+  font-size: 11px;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.bh-detail {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.bh-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.bh-detail-header h3 {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 16px;
+}
+
+.bh-provider-name {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #34d399;
+  font-weight: 700;
+}
+
+.bh-detail-count {
+  font-size: 12px;
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+.bh-view-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.bh-toggle-btn {
+  background: rgba(0, 0, 0, 0.3);
+  color: #9ca3af;
+  border: none;
+  padding: 7px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 180ms ease;
+}
+
+.bh-toggle-btn:hover { color: #e5e7eb; }
+
+.bh-toggle-btn.active {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.bh-table tbody tr.bh-row { cursor: pointer; }
+
+.bh-table tbody tr.row-failed td {
+  background: rgba(239, 68, 68, 0.06);
+  border-left: 3px solid #ef4444;
+}
+
+.bh-table tbody tr.row-reversal td {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.bh-table tbody tr.row-pending td {
+  background: rgba(251, 191, 36, 0.04);
+}
+
+.bh-cb-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d1d5db;
+}
+
+.bh-cb-badge.cb-bet { background: rgba(99, 102, 241, 0.18); color: #a5b4fc; }
+.bh-cb-badge.cb-result { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+.bh-cb-badge.cb-rollback,
+.bh-cb-badge.cb-cancel_betnsettle { background: rgba(156, 163, 175, 0.2); color: #d1d5db; }
+.bh-cb-badge.cb-bonus,
+.bh-cb-badge.cb-jackpot { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.bh-cb-badge.cb-deposit { background: rgba(16, 185, 129, 0.18); color: #6ee7b7; }
+.bh-cb-badge.cb-withdraw { background: rgba(239, 68, 68, 0.16); color: #fca5a5; }
+
+.bh-outcome {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.bh-outcome.out-win { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.bh-outcome.out-partial { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+.bh-outcome.out-loss { background: rgba(239, 68, 68, 0.14); color: #fca5a5; }
+
+.bh-balance { font-size: 12px; color: #9ca3af; }
+.text-danger { color: #f87171; }
+
+.bh-row-detail td {
+  background: rgba(0, 0, 0, 0.45) !important;
+  padding: 12px 16px !important;
+}
+
+.bh-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px 18px;
+}
+
+.bh-detail-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bh-detail-grid label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.bh-detail-grid span {
+  font-size: 12px;
+  color: #e5e7eb;
+}
+
+.bh-detail-error {
+  grid-column: 1 / -1;
+}
+
+.bh-detail-error span {
+  color: #fca5a5;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  font-size: 11px;
+}
