@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
+import HotChatsBar from '../components/HotChats/HotChatsBar';
 
 const ChatView = () => {
   const { sessionId } = useParams();
@@ -159,13 +160,14 @@ const ChatView = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Send message
-  const handleSend = async () => {
-    const content = newMessage.trim();
+  // Send message — accepts an optional override (used by HotChatsBar)
+  const handleSend = async (override) => {
+    const raw = typeof override === 'string' ? override : newMessage;
+    const content = (raw || '').trim();
     if (!content || sending) return;
 
     setSending(true);
-    setNewMessage('');
+    if (typeof override !== 'string') setNewMessage('');
 
     // Optimistically add message
     const tempMessage = {
@@ -445,6 +447,14 @@ const ChatView = () => {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Hot Chats quick-reply bar */}
+      {session?.status !== 'CLOSED' && (
+        <HotChatsBar
+          disabled={sending}
+          onSelect={(content) => handleSend(content)}
+        />
+      )}
 
       {/* Input Area */}
       {session?.status !== 'CLOSED' ? (

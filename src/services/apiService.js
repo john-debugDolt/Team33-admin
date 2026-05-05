@@ -565,6 +565,47 @@ export const getTransferHistorySummary = (accountId, params = {}) =>
   apiRequest(`/api/admin/transfer-history/${accountId}${buildQuery(params)}`);
 
 // ============================================
+// HOT CHATS — reusable quick-reply messages
+// Base URL: /api/admin/hot-chats
+// Auth: ADMIN or STAFF role
+// ============================================
+
+/** GET /api/admin/hot-chats — full list incl. disabled (for management UI) */
+export const getAllHotChats = () => apiRequest('/api/admin/hot-chats');
+
+/** GET /api/admin/hot-chats/active — active only (for the picker) */
+export const getActiveHotChats = () => apiRequest('/api/admin/hot-chats/active');
+
+/** GET /api/admin/hot-chats/category/{category} — active filtered by category */
+export const getHotChatsByCategory = (category) =>
+  apiRequest(`/api/admin/hot-chats/category/${encodeURIComponent(category)}`);
+
+/** GET /api/admin/hot-chats/{id} — fetch one */
+export const getHotChat = (id) => apiRequest(`/api/admin/hot-chats/${id}`);
+
+/**
+ * POST /api/admin/hot-chats — create a hot chat
+ * @param {{ title: string, content: string, category?: string, sortOrder?: number, active?: boolean }} body
+ */
+export const createHotChat = (body) =>
+  apiRequest('/api/admin/hot-chats', { method: 'POST', body: JSON.stringify(body) });
+
+/** PUT /api/admin/hot-chats/{id} — full update */
+export const updateHotChat = (id, body) =>
+  apiRequest(`/api/admin/hot-chats/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+
+/** PATCH /api/admin/hot-chats/{id}/active — toggle visibility */
+export const setHotChatActive = (id, active) =>
+  apiRequest(`/api/admin/hot-chats/${id}/active`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active }),
+  });
+
+/** DELETE /api/admin/hot-chats/{id} — hard delete */
+export const deleteHotChat = (id) =>
+  apiRequest(`/api/admin/hot-chats/${id}`, { method: 'DELETE' });
+
+// ============================================
 // CHAT MANAGEMENT
 // Base URL: /api/admin/chats
 // ============================================
