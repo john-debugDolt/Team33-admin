@@ -108,16 +108,19 @@ class BonusService {
    * Based on official docs: CreateBonusRequest includes bonusPercentage, fixedAmount, etc.
    */
   async createBonus(bonusData) {
-    // Map frontend field names to backend expected names per official docs
+    // The UI treats PERCENTAGE as a % rate and every other type as a fixed
+    // amount (see Rebate.jsx form label). Mirror that here so non-PERCENTAGE
+    // bonuses still carry their value — otherwise the backend receives null.
+    const value = bonusData.bonusValue != null ? Number(bonusData.bonusValue) : undefined;
+    const isPercentage = bonusData.bonusType === 'PERCENTAGE';
     const payload = {
       bonusCode: bonusData.bonusCode,
       name: bonusData.name || bonusData.displayName,
       description: bonusData.description,
       bonusType: bonusData.bonusType,
-      // Backend expects bonusPercentage for PERCENTAGE type
-      bonusPercentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
-      // Backend expects fixedAmount for FIXED type
-      fixedAmount: bonusData.bonusType === 'FIXED' ? bonusData.bonusValue : undefined,
+      bonusValue: value,
+      bonusPercentage: isPercentage ? value : undefined,
+      fixedAmount: !isPercentage ? value : undefined,
       maxBonusAmount: bonusData.maxBonusAmount,
       minDeposit: bonusData.minDeposit,
       turnoverMultiplier: bonusData.turnoverMultiplier,
@@ -141,15 +144,16 @@ class BonusService {
    * PUT /api/admin/bonuses/{bonusId}
    */
   async updateBonus(bonusId, bonusData) {
+    const value = bonusData.bonusValue != null ? Number(bonusData.bonusValue) : undefined;
+    const isPercentage = bonusData.bonusType === 'PERCENTAGE';
     const payload = {
       bonusCode: bonusData.bonusCode,
       name: bonusData.name || bonusData.displayName,
       description: bonusData.description,
       bonusType: bonusData.bonusType,
-      // Backend expects bonusPercentage for PERCENTAGE type
-      bonusPercentage: bonusData.bonusType === 'PERCENTAGE' ? bonusData.bonusValue : undefined,
-      // Backend expects fixedAmount for FIXED type
-      fixedAmount: bonusData.bonusType === 'FIXED' ? bonusData.bonusValue : undefined,
+      bonusValue: value,
+      bonusPercentage: isPercentage ? value : undefined,
+      fixedAmount: !isPercentage ? value : undefined,
       maxBonusAmount: bonusData.maxBonusAmount,
       minDeposit: bonusData.minDeposit,
       turnoverMultiplier: bonusData.turnoverMultiplier,
