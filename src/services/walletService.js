@@ -115,6 +115,44 @@ export const walletService = {
     }
   },
 
+  // Reset a user's wallet balance to zero. Admin-only.
+  // POST /api/admin/wallets/{accountId}/clear-balance
+  // No request body; idempotent. Backend ADMIN role enforced by Keycloak.
+  // NOTE: per backend docs, admin-service proxy may need to forward this
+  // route — if you see a 404, ask backend to wire AdminWalletController.
+  async clearBalance(accountId) {
+    if (!accountId) {
+      return { success: false, error: 'Missing accountId' };
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/admin/wallets/${accountId}/clear-balance`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, wallet: data, data };
+      }
+
+      let errorMessage = `Failed to clear balance (${response.status})`;
+      try {
+        const data = await response.json();
+        errorMessage = data.message || data.error || errorMessage;
+      } catch (e) { /* no body */ }
+
+      if (response.status === 401) errorMessage = 'Unauthorized — log in again.';
+      if (response.status === 403) errorMessage = 'Forbidden — admin role required.';
+      if (response.status === 404 || response.status === 500) {
+        errorMessage = errorMessage.toLowerCase().includes('wallet') ? errorMessage : 'Wallet not found';
+      }
+      return { success: false, error: errorMessage };
+    } catch (error) {
+      console.error('Clear balance error:', error);
+      return { success: false, error: 'Network error. Please try again.' };
+    }
+  },
+
   // Get wallet by account ID
   async getWallet(accountId) {
     try {

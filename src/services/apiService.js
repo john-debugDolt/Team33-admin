@@ -303,6 +303,16 @@ export const getBankStats = () => apiRequest('/api/admin/banks/stats');
 export const getWallet = (accountId) => apiRequest(`/api/admin/wallets/${accountId}`);
 
 /**
+ * Reset wallet balance to zero. Idempotent. ADMIN role required.
+ * Backend doc: POST /api/admin/wallets/{accountId}/clear-balance.
+ * No request body; returns the wallet with balance: 0 on success.
+ */
+export const clearWalletBalance = (accountId) =>
+  apiRequest(`/api/admin/wallets/${accountId}/clear-balance`, {
+    method: 'POST',
+  });
+
+/**
  * Create wallet for account
  * @param {string} accountId - Account ID
  */

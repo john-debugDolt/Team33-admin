@@ -3,6 +3,7 @@ import { FiX, FiUser, FiPhone, FiCalendar, FiCopy, FiCheck, FiChevronLeft, FiChe
 import { formatDateTime } from '../utils/dateUtils';
 import {
   getWallet,
+  clearWalletBalance,
   getDepositsForAccount,
   getWithdrawalsForAccount,
   getBetHistory,
@@ -94,6 +95,8 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
 
   const [walletData, setWalletData] = useState(null);
   const [transactions, setTransactions] = useState([]);
+  const [clearingBalance, setClearingBalance] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // ===== Bet History v2 (admin-service) =====
   const [betProviders, setBetProviders] = useState([]); // ['richgaming','uuslot',...]
@@ -611,11 +614,27 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
       case 'WALLET':
         return (
           <div className="wallet-section">
-            <div className="wallet-balance">
-              <label>Current Balance</label>
-              <span className="balance-amount">
-                ${walletData?.balance?.toFixed(2) || user.balance?.toFixed(2) || '0.00'}
-              </span>
+            <div className="wallet-balance" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <div>
+                <label>Current Balance</label>
+                <span className="balance-amount">
+                  ${walletData?.balance?.toFixed(2) || user.balance?.toFixed(2) || '0.00'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(true)}
+                disabled={clearingBalance || !walletData?.walletId}
+                title="Reset this user's wallet balance to zero (admin only, no transaction recorded)"
+                style={{
+                  background: '#dc2626', color: '#fff', border: 'none',
+                  padding: '8px 14px', borderRadius: 8, cursor: clearingBalance ? 'wait' : 'pointer',
+                  fontWeight: 600, fontSize: 13,
+                  opacity: (clearingBalance || !walletData?.walletId) ? 0.6 : 1,
+                }}
+              >
+                {clearingBalance ? 'Clearing…' : 'Clear Balance'}
+              </button>
             </div>
             <div className="wallet-details">
               <div className="detail-item">
@@ -633,6 +652,55 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                 </span>
               </div>
             </div>
+
+            {showClearConfirm && (
+              <div
+                onClick={() => !clearingBalance && setShowClearConfirm(false)}
+                style={{
+                  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ background: '#fff', borderRadius: 12, padding: 24, maxWidth: 420, width: '90%' }}
+                >
+                  <h3 style={{ margin: '0 0 8px', color: '#111827' }}>Clear wallet balance?</h3>
+                  <p style={{ margin: '0 0 18px', color: '#4b5563', fontSize: 14, lineHeight: 1.5 }}>
+                    This will reset <strong>{user?.firstName} {user?.lastName}</strong>'s balance to <strong>$0.00</strong>.
+                    No transaction is recorded — the prior balance can't be recovered from the wallet alone.
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(false)}
+                      disabled={clearingBalance}
+                      style={{ background: '#f3f4f6', color: '#111827', border: 'none', padding: '9px 16px', borderRadius: 8, cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setClearingBalance(true);
+                        const result = await clearWalletBalance(user.accountId);
+                        setClearingBalance(false);
+                        if (result.success) {
+                          setWalletData(result.data || result.wallet || { ...walletData, balance: 0 });
+                          setShowClearConfirm(false);
+                        } else {
+                          alert(result.error || 'Failed to clear balance');
+                        }
+                      }}
+                      disabled={clearingBalance}
+                      style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: 8, cursor: clearingBalance ? 'wait' : 'pointer', fontWeight: 600 }}
+                    >
+                      {clearingBalance ? 'Clearing…' : 'Yes, clear balance'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
 
