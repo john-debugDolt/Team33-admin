@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FiMessageSquare, FiVolume2, FiVolumeX, FiUser, FiClock, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
+import { accountService } from '../../services/accountService';
 
 const ChatList = () => {
   const navigate = useNavigate();
@@ -12,6 +13,9 @@ const ChatList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dataSource, setDataSource] = useState('');
+  // Cache of accountId -> account object so we don't refetch the same
+  // customer every poll tick. Populated lazily as new sessions show up.
+  const [accountsByid, setAccountsByid] = useState({});
 
   const filters = ['ALL', 'WAITING', 'ACTIVE', 'CLOSED'];
 
@@ -69,6 +73,7 @@ const ChatList = () => {
         const formattedChats = result.sessions.map((session, index) => ({
           id: session.sessionId || session.id || index,
           sessionId: session.sessionId || session.id,
+          accountId: session.accountId,
           username: session.userName || session.accountId || session.userId || 'Unknown User',
           subject: session.subject || 'General Inquiry',
           message: session.lastMessage || session.subject || 'New chat session',
@@ -84,6 +89,24 @@ const ChatList = () => {
         setChats(formattedChats);
         setDataSource(result.source || '');
         setError(result.error || null);
+
+        // Fire-and-forget: fetch the customer record for any accountId we
+        // haven't already cached. This populates the name/phone shown on
+        // each row without blocking the list render.
+        setAccountsByid((prev) => {
+          const missing = formattedChats
+            .map((c) => c.accountId)
+            .filter((id) => id && !(id in prev))
+          const unique = Array.from(new Set(missing))
+          unique.forEach((id) => {
+            accountService.getAccount(id).then((res) => {
+              if (res.success) {
+                setAccountsByid((cur) => ({ ...cur, [id]: res.account }))
+              }
+            }).catch(() => {})
+          })
+          return prev
+        })
       } else {
         setError(result.error || 'Failed to fetch sessions');
       }
@@ -279,7 +302,15 @@ const ChatList = () => {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-                    <strong style={{ marginRight: '8px' }}>{chat.username}</strong>
+                    {(() => {
+                      const acct = chat.accountId ? accountsByid[chat.accountId] : null
+                      const fullName = acct ? `${acct.firstName || ''} ${acct.lastName || ''}`.trim() : ''
+                      return (
+                        <strong style={{ marginRight: '8px' }}>
+                          {fullName || chat.username}
+                        </strong>
+                      )
+                    })()}
                     <span
                       className="badge"
                       style={{
@@ -293,6 +324,11 @@ const ChatList = () => {
                       {chat.status}
                     </span>
                   </div>
+                  {chat.accountId && accountsByid[chat.accountId]?.phoneNumber && (
+                    <p style={{ margin: '0 0 2px 0', color: '#6b7280', fontSize: '12px' }}>
+                      📱 {accountsByid[chat.accountId].phoneNumber}
+                    </p>
+                  )}
                   <p style={{
                     margin: 0,
                     color: '#374151',
