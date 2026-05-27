@@ -10,6 +10,7 @@ import {
 } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
+import { accountService } from '../../services/accountService';
 import HotChatsBar from '../components/HotChats/HotChatsBar';
 
 const ChatView = () => {
@@ -19,6 +20,7 @@ const ChatView = () => {
   const inputRef = useRef(null);
 
   const [session, setSession] = useState(null);
+  const [customer, setCustomer] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -82,15 +84,27 @@ const ChatView = () => {
       // Also get local session data for userName
       const localSession = chatStorageService.getSession(sessionId);
 
+      let resolvedSession = null
       if (sessionResult.success) {
         // Merge API data with local data (for userName)
-        setSession({
+        resolvedSession = {
           ...sessionResult.data,
           userName: localSession?.userName || sessionResult.data?.userName
-        });
+        }
+        setSession(resolvedSession);
       } else if (localSession) {
         // Fallback to local session if API fails
+        resolvedSession = localSession
         setSession(localSession);
+      }
+
+      // Pull the customer's full account so the header can show their real
+      // name + phone instead of just the userName/accountId placeholder.
+      const accountId = resolvedSession?.accountId
+      if (accountId) {
+        accountService.getAccount(accountId).then((res) => {
+          if (res.success) setCustomer(res.account)
+        }).catch(() => {})
       }
 
       // Get messages
@@ -281,7 +295,11 @@ const ChatView = () => {
 
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <strong>{session?.userName || session?.accountId || 'Unknown User'}</strong>
+            <strong>
+              {customer
+                ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim() || session?.userName || session?.accountId || 'Unknown User'
+                : (session?.userName || session?.accountId || 'Unknown User')}
+            </strong>
             {session?.status && (
               <span style={{
                 fontSize: '11px',
@@ -294,11 +312,14 @@ const ChatView = () => {
               </span>
             )}
           </div>
-          {session?.subject && (
-            <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>
-              {session.subject}
-            </p>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: 2, fontSize: '13px', color: '#6b7280' }}>
+            {customer?.phoneNumber && (
+              <span>📱 {customer.phoneNumber}</span>
+            )}
+            {session?.subject && (
+              <span style={{ opacity: 0.85 }}>· {session.subject}</span>
+            )}
+          </div>
         </div>
 
         {session?.status !== 'CLOSED' && (
