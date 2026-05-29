@@ -155,17 +155,24 @@ button, a {
   font-weight: bold;
 }
 
-/* Top Time Bar — thin professional date/time + timezone */
+/* Top Time Bar — vibrant gradient with crisp typography */
 .time-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #0f1118;
-  color: #cbd5e1;
-  padding: 4px 14px;
+  background: linear-gradient(
+    90deg,
+    #6366f1 0%,
+    #8b5cf6 30%,
+    #d946ef 60%,
+    #f43f5e 100%
+  );
+  color: #fff;
+  padding: 5px 16px;
   font-size: 12px;
   line-height: 1.4;
-  border-bottom: 1px solid #1f2230;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 1px 8px rgba(139, 92, 246, 0.35);
   white-space: nowrap;
   overflow: hidden;
 }
@@ -173,68 +180,78 @@ button, a {
 .time-bar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
 }
 
 .time-bar-date {
-  color: #94a3b8;
+  color: rgba(255, 255, 255, 0.88);
   letter-spacing: 0.02em;
   font-weight: 500;
 }
 
 .time-bar-sep {
-  color: #475569;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 700;
 }
 
 .time-bar-time {
   font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
-  color: #f1f5f9;
-  font-weight: 600;
-  letter-spacing: 0.05em;
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
 
 .time-bar-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .tz-label {
-  color: #64748b;
-  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 10px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
 }
 
 .tz-select {
-  background: #1a1d29;
-  color: #e2e8f0;
-  border: 1px solid #2a2f3e;
-  border-radius: 4px;
-  padding: 3px 24px 3px 8px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 3px 26px 3px 10px;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>");
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>");
   background-repeat: no-repeat;
-  background-position: right 6px center;
+  background-position: right 8px center;
   background-size: 10px;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .tz-select:hover {
-  border-color: #3b4252;
-  background-color: #1f2230;
+  background-color: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .tz-select:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.tz-select option {
+  background: #1a1d29;
+  color: #fff;
 }
 
 @media (max-width: 600px) {
