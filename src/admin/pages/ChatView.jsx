@@ -6,7 +6,9 @@ import {
   FiUser,
   FiX,
   FiClock,
-  FiRefreshCw
+  FiRefreshCw,
+  FiCalendar,
+  FiGlobe
 } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
@@ -340,6 +342,57 @@ const ChatView = () => {
           </button>
         )}
       </div>
+
+      {/* Account Details Strip */}
+      {(() => {
+        const fullName = customer
+          ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim()
+          : '';
+        const created = customer?.createdAt || customer?.createdDate || customer?.registrationDate;
+        const ip = customer?.ipAddress || customer?.registrationIp || customer?.lastLoginIp;
+        if (!customer && !session) return null;
+        return (
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: '18px',
+            padding: '8px 20px',
+            background: '#f9fafb',
+            borderBottom: '1px solid #e5e7eb',
+            fontSize: '12px',
+            color: '#4b5563',
+            flexShrink: 0
+          }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <FiUser size={12} color="#6b7280" />
+              <span style={{ color: '#9ca3af' }}>Customer:</span>
+              <strong style={{ color: '#111827' }}>
+                {fullName || session?.userName || session?.accountId || 'Unknown'}
+              </strong>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <FiCalendar size={12} color="#6b7280" />
+              <span style={{ color: '#9ca3af' }}>Created:</span>
+              <strong style={{ color: '#111827' }}>
+                {created
+                  ? new Date(created).toLocaleString('en-GB', {
+                      day: '2-digit', month: 'short', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit'
+                    })
+                  : '—'}
+              </strong>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <FiGlobe size={12} color="#6b7280" />
+              <span style={{ color: '#9ca3af' }}>IP:</span>
+              <strong style={{ color: '#111827', fontFamily: 'SF Mono, Menlo, monospace' }}>
+                {ip || '—'}
+              </strong>
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Error Banner */}
       {error && (
