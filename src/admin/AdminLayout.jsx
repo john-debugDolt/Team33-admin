@@ -36,9 +36,30 @@ import {
   FiLogOut
 } from 'react-icons/fi';
 
+const TIMEZONES = [
+  { value: 'Australia/Melbourne', label: 'Melbourne (VIC)' },
+  { value: 'Australia/Sydney', label: 'Sydney (NSW)' },
+  { value: 'Australia/Brisbane', label: 'Brisbane (QLD)' },
+  { value: 'Australia/Adelaide', label: 'Adelaide (SA)' },
+  { value: 'Australia/Perth', label: 'Perth (WA)' },
+  { value: 'Australia/Hobart', label: 'Hobart (TAS)' },
+  { value: 'Australia/Darwin', label: 'Darwin (NT)' },
+  { value: 'Australia/Canberra', label: 'Canberra (ACT)' },
+  { value: 'Asia/Kuala_Lumpur', label: 'Malaysia (MYT)' },
+];
+
+const DEFAULT_TZ = 'Australia/Melbourne';
+
 const AdminLayout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [timezone, setTimezone] = useState(() => {
+    try {
+      return localStorage.getItem('admin_tz') || DEFAULT_TZ;
+    } catch {
+      return DEFAULT_TZ;
+    }
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const { t, currentLanguage, languages, changeLanguage } = useTranslation();
@@ -67,10 +88,30 @@ const AdminLayout = () => {
     return () => document.body.classList.remove('sidebar-open');
   }, [sidebarOpen]);
 
-  const formatDateTime = (date) => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const day = days[date.getDay()];
-    return `--- ${date.getDate().toString().padStart(2, '0')} January ${date.getFullYear()} (${day}) ${date.toLocaleTimeString('en-GB')} --- To get latest Maintenance Announcement click →`;
+  const formatDate = (date) =>
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      weekday: 'short',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).format(date);
+
+  const formatTime = (date) =>
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+
+  const handleTimezoneChange = (e) => {
+    const tz = e.target.value;
+    setTimezone(tz);
+    try {
+      localStorage.setItem('admin_tz', tz);
+    } catch { /* ignore */ }
   };
 
   // First section of sidebar menu
@@ -142,9 +183,26 @@ const AdminLayout = () => {
 
   return (
     <div className="admin-layout">
-      {/* Announcement Bar */}
-      <div className="announcement-bar">
-        {formatDateTime(currentTime)} <a href="#">Here</a>
+      {/* Top Time Bar */}
+      <div className="time-bar">
+        <div className="time-bar-left">
+          <span className="time-bar-date">{formatDate(currentTime)}</span>
+          <span className="time-bar-sep">·</span>
+          <span className="time-bar-time">{formatTime(currentTime)}</span>
+        </div>
+        <div className="time-bar-right">
+          <label className="tz-label" htmlFor="admin-tz-select">Timezone</label>
+          <select
+            id="admin-tz-select"
+            className="tz-select"
+            value={timezone}
+            onChange={handleTimezoneChange}
+          >
+            {TIMEZONES.map(tz => (
+              <option key={tz.value} value={tz.value}>{tz.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Top Header with Icons */}

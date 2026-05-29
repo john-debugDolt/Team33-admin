@@ -139,7 +139,7 @@ button, a {
   flex-direction: column;
 }
 
-/* Announcement Bar */
+/* Announcement Bar (legacy — kept for any references) */
 .announcement-bar {
   background: #f5a623;
   color: #000;
@@ -153,6 +153,102 @@ button, a {
 .announcement-bar a {
   color: #cc0000;
   font-weight: bold;
+}
+
+/* Top Time Bar — thin professional date/time + timezone */
+.time-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #0f1118;
+  color: #cbd5e1;
+  padding: 4px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-bottom: 1px solid #1f2230;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.time-bar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.time-bar-date {
+  color: #94a3b8;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+}
+
+.time-bar-sep {
+  color: #475569;
+}
+
+.time-bar-time {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', monospace;
+  color: #f1f5f9;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tz-label {
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tz-select {
+  background: #1a1d29;
+  color: #e2e8f0;
+  border: 1px solid #2a2f3e;
+  border-radius: 4px;
+  padding: 3px 24px 3px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 10px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tz-select:hover {
+  border-color: #3b4252;
+  background-color: #1f2230;
+}
+
+.tz-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+@media (max-width: 600px) {
+  .time-bar {
+    padding: 4px 10px;
+    font-size: 11px;
+  }
+  .tz-label {
+    display: none;
+  }
+  .tz-select {
+    font-size: 11px;
+    padding: 2px 20px 2px 6px;
+  }
 }
 
 /* Top Header with Icons */
