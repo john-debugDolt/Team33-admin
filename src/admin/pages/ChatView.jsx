@@ -13,6 +13,7 @@ import {
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
 import { accountService } from '../../services/accountService';
+import { getAccountDetails } from '../../services/apiService';
 import HotChatsBar from '../components/HotChats/HotChatsBar';
 
 const ChatView = () => {
@@ -100,13 +101,24 @@ const ChatView = () => {
         setSession(localSession);
       }
 
-      // Pull the customer's full account so the header can show their real
-      // name + phone instead of just the userName/accountId placeholder.
+      // Pull the customer's full account from the admin endpoint so we get
+      // name, phone, createdAt and lastIp for the chat header.
       const accountId = resolvedSession?.accountId
       if (accountId) {
-        accountService.getAccount(accountId).then((res) => {
-          if (res.success) setCustomer(res.account)
-        }).catch(() => {})
+        getAccountDetails(accountId)
+          .then((res) => {
+            if (res?.success && res.data) {
+              setCustomer(res.data)
+            } else {
+              // Fall back to the public account endpoint
+              accountService.getAccount(accountId).then((r) => {
+                if (r.success) setCustomer(r.account)
+              }).catch(() => {})
+            }
+          })
+          .catch((err) => {
+            console.warn('[ChatView] admin account fetch error:', err)
+          })
       }
 
       // Get messages
@@ -349,7 +361,7 @@ const ChatView = () => {
           ? `${customer.firstName || ''} ${customer.lastName || ''}`.trim()
           : '';
         const created = customer?.createdAt || customer?.createdDate || customer?.registrationDate;
-        const ip = customer?.ipAddress || customer?.registrationIp || customer?.lastLoginIp;
+        const ip = customer?.lastIp || customer?.ipAddress || customer?.registrationIp || customer?.lastLoginIp;
         if (!customer && !session) return null;
         return (
           <div style={{
