@@ -140,6 +140,7 @@ const AdminLayout = () => {
     { icon: <FiCreditCard />, labelKey: 'manageBank', path: '/manage-bank' },
     { icon: <FiUserCheck />, labelKey: 'manageStaff', path: '/manage-staff' },
     { icon: <FiSpeaker />, labelKey: 'promotionMenu', path: '/promotion' },
+    { icon: <FiGift />, label: 'Check-in Bonus', path: '/checkin-bonus' },
     { icon: <FiMonitor />, labelKey: 'gameKiosk', path: '/game-kiosk' },
     { icon: <FiSettings />, labelKey: 'gameSetting', path: '/game-setting' },
     { icon: <FiSettings />, labelKey: 'settingMenu', path: '/setting' },

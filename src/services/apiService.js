@@ -602,6 +602,51 @@ export const getBonusLedger = (accountId) =>
   apiRequest(`/api/admin/bonus-ledger/${accountId}`);
 
 // ============================================
+// DAILY CHECK-IN BONUS — campaign management
+// Base URL: /api/admin/checkin-bonus
+// Auth: ADMIN realm role
+// ============================================
+
+/**
+ * GET /api/admin/checkin-bonus
+ * Lists every campaign (active + soft-disabled), newest first.
+ */
+export const getCheckinBonusCampaigns = () =>
+  apiRequest('/api/admin/checkin-bonus');
+
+/**
+ * GET /api/admin/checkin-bonus/active
+ * Returns the currently active campaign — 404 if none.
+ */
+export const getActiveCheckinBonusCampaign = () =>
+  apiRequest('/api/admin/checkin-bonus/active');
+
+/**
+ * POST /api/admin/checkin-bonus
+ * Creates a campaign. Body:
+ *   { displayName, description?, dailyAmount (>=0.01), days (1..365), active? }
+ * Returns 201 with the persisted campaign.
+ *
+ * Only one active campaign should exist at a time — toggle the previous one
+ * off via PATCH .../active first (the DB doesn't enforce this).
+ */
+export const createCheckinBonusCampaign = (body) =>
+  apiRequest('/api/admin/checkin-bonus', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+
+/**
+ * PATCH /api/admin/checkin-bonus/{id}/active
+ * Toggles a campaign on/off. Body: { active: true|false }.
+ */
+export const setCheckinBonusCampaignActive = (id, active) =>
+  apiRequest(`/api/admin/checkin-bonus/${id}/active`, {
+    method: 'PATCH',
+    body: JSON.stringify({ active }),
+  });
+
+// ============================================
 // HOT CHATS — reusable quick-reply messages
 // Base URL: /api/admin/hot-chats
 // Auth: ADMIN or STAFF role
