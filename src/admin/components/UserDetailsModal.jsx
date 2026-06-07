@@ -13,7 +13,10 @@ import {
   getBetHistoryByProviderCount,
   getBetHistorySummary,
   getTransferHistoryByProvider,
+  getTransferHistoryByProviderCount,
+  getTransferHistoryProviders,
   getTransferHistorySummary,
+  getBonusLedger,
   getCommissionEarnings,
   getPendingCommissionTotal,
   getReferralsByPrincipal,
@@ -109,7 +112,13 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
   const [betViewMode, setBetViewMode] = useState('rounds');       // 'rounds' or 'raw'
   const [betExpandedId, setBetExpandedId] = useState(null);
   const [betPage, setBetPage] = useState(0);
-  const [transferRows, setTransferRows] = useState({ jdb: [], scr888h5: [] }); // for transfer-wallet section
+  // Dynamic map of provider key -> { total, rows } from /transfer-history/summary.
+  // 20 providers per the doc; kept as a dict so adding a provider on the backend
+  // surfaces in the modal without any frontend change.
+  const [transferRows, setTransferRows] = useState({});
+  const [transferProviders, setTransferProviders] = useState([]);
+  // Bonus ledger (newest-first) for the BONUS LEDGER tab.
+  const [bonusLedger, setBonusLedger] = useState([]);
 
   // Legacy state still used by the old wallet-service fetch (kept until removed)
   const [betHistory, setBetHistory] = useState([]);
@@ -141,7 +150,10 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
   // Pagination settings
   const BET_HISTORY_LIMIT = 20;
   const BET_SUMMARY_LIMIT = 5;
-  const TRANSFER_WALLET_PROVIDERS = ['jdb', 'scr888h5'];
+  // Derived live from /api/admin/transfer-history/providers (20 providers per doc).
+  // Falls back to an empty array; the BET HISTORY tab also fetches the live list
+  // on mount and pushes it into transferProviders so this stays in sync.
+  const TRANSFER_WALLET_PROVIDERS = transferProviders;
 
   // Pair raw BET → RESULT callbacks into rounds (per backend integration guide §3)
   const pairRoundsFromCallbacks = (rows) => {
@@ -182,6 +194,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
   const tabs = [
     { id: 'TRANSACTION', label: 'TRANSACTION' },
     { id: 'BET HISTORY', label: 'BET HISTORY' },
+    { id: 'BONUS LEDGER', label: 'BONUS LEDGER' },
     { id: 'COMMISSION', label: 'COMMISSION' },
     { id: 'CREDIT', label: 'CREDIT' },
     { id: 'SETTING', label: 'SETTING' },
@@ -298,6 +311,14 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                 })
               );
             }
+            // Cache the live transfer-wallet provider list (20 today) once.
+            if (transferProviders.length === 0) {
+              tasks.push(
+                getTransferHistoryProviders().then((r) => {
+                  if (r.success) setTransferProviders(r.data?.providers || []);
+                })
+              );
+            }
 
             // Cross-provider snapshot (drives the Overview header + per-provider totals)
             tasks.push(
@@ -310,14 +331,22 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
               })
             );
 
-            // Transfer-wallet snapshot in parallel
+            // Transfer-wallet snapshot in parallel.
+            // Response shape: { accountId, <provider>: { total, rows }, ..., grandTotal }
+            // Build a dict keyed by provider with the rows array — falls through to
+            // an empty list when the snapshot omits a provider.
             tasks.push(
               getTransferHistorySummary(user.accountId, { limit: BET_SUMMARY_LIMIT }).then((r) => {
                 if (r.success && r.data) {
-                  setTransferRows({
-                    jdb: r.data.jdb?.rows || [],
-                    scr888h5: r.data.scr888h5?.rows || [],
+                  const next = {};
+                  Object.keys(r.data).forEach((k) => {
+                    if (k === 'accountId' || k === 'grandTotal') return;
+                    const section = r.data[k];
+                    if (section && typeof section === 'object') {
+                      next[k] = { total: section.total ?? 0, rows: section.rows || [] };
+                    }
                   });
+                  setTransferRows(next);
                 }
               })
             );
@@ -363,6 +392,13 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
             }
 
             await Promise.all(tasks);
+            break;
+          }
+
+          case 'BONUS LEDGER': {
+            const r = await getBonusLedger(user.accountId);
+            // Endpoint returns the array directly per the doc.
+            setBonusLedger(r.success && Array.isArray(r.data) ? r.data : []);
             break;
           }
 
@@ -752,7 +788,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
         const grandTotal = betSummary?.grandTotal ?? 0;
         const overviewProviders = betProviders.filter((p) => betSummary?.[p]);
         const rounds = !isTransfer && betViewMode === 'rounds' ? pairRoundsFromCallbacks(betRows) : [];
-        const transferHasRows = transferRows.jdb.length > 0 || transferRows.scr888h5.length > 0;
+        const transferHasRows = Object.values(transferRows).some((p) => (p?.rows?.length ?? 0) > 0);
 
         const renderRawRow = (row) => {
           const isExpanded = betExpandedId === row.id;
@@ -868,24 +904,29 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                 })}
               </div>
 
-              {/* Transfer-wallet section */}
-              {transferHasRows && (
+              {/* Transfer-wallet section — chips rendered from the live provider
+                  list (20 today). Empty providers stay visible (faded) so an
+                  admin can see they exist but have nothing to show; clicking
+                  still selects them to paginate the saga-ledger lazily. */}
+              {TRANSFER_WALLET_PROVIDERS.length > 0 && (
                 <div className="bh-transfer-strip">
                   <span className="bh-transfer-label">Transfer wallets:</span>
-                  <button
-                    className={`bh-provider-chip ${transferRows.jdb.length === 0 ? 'empty' : ''} ${betProvider === 'jdb' ? 'active' : ''}`}
-                    onClick={() => { setBetProvider(betProvider === 'jdb' ? '' : 'jdb'); setBetPage(0); }}
-                  >
-                    <span className="bh-chip-name">jdb</span>
-                    <span className="bh-chip-count">{transferRows.jdb.length}+</span>
-                  </button>
-                  <button
-                    className={`bh-provider-chip ${transferRows.scr888h5.length === 0 ? 'empty' : ''} ${betProvider === 'scr888h5' ? 'active' : ''}`}
-                    onClick={() => { setBetProvider(betProvider === 'scr888h5' ? '' : 'scr888h5'); setBetPage(0); }}
-                  >
-                    <span className="bh-chip-name">scr888h5</span>
-                    <span className="bh-chip-count">{transferRows.scr888h5.length}+</span>
-                  </button>
+                  {TRANSFER_WALLET_PROVIDERS.map((p) => {
+                    const section = transferRows[p];
+                    const total = section?.total ?? 0;
+                    const rowsCount = section?.rows?.length ?? 0;
+                    const isActive = betProvider === p;
+                    return (
+                      <button
+                        key={p}
+                        className={`bh-provider-chip ${rowsCount === 0 ? 'empty' : ''} ${isActive ? 'active' : ''}`}
+                        onClick={() => { setBetProvider(isActive ? '' : p); setBetPage(0); setBetExpandedId(null); }}
+                      >
+                        <span className="bh-chip-name">{p}</span>
+                        <span className="bh-chip-count">{(total || rowsCount).toLocaleString()}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1011,6 +1052,82 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                   </div>
                 )}
               </div>
+            )}
+          </div>
+        );
+      }
+
+      case 'BONUS LEDGER': {
+        // bonus_wallet ledger per /api/admin/bonus-ledger/{accountId}.
+        // Rows are returned newest-first; row shape:
+        //   { id, accountId, type, amount, balanceAfter, referenceId,
+        //     provider, description, createdAt }
+        const credits = ['CREDIT_GRANT', 'CREDIT_REFUND', 'CREDIT_PROVIDER_WITHDRAW'];
+        const isCredit = (t) => credits.includes(t);
+        const totalCredits = bonusLedger
+          .filter((r) => isCredit(r.type))
+          .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const totalDebits = bonusLedger
+          .filter((r) => !isCredit(r.type))
+          .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        const currentBalance = bonusLedger[0]?.balanceAfter ?? 0;
+
+        return (
+          <div className="bet-history-content">
+            <div className="bh-summary-bar">
+              <div className="bh-summary-item">
+                <span className="bh-summary-label">Current balance</span>
+                <span className="bh-summary-value">{fmtMoney(currentBalance)}</span>
+              </div>
+              <div className="bh-summary-item">
+                <span className="bh-summary-label">Total credits</span>
+                <span className="bh-summary-value bh-credit">{fmtMoney(totalCredits)}</span>
+              </div>
+              <div className="bh-summary-item">
+                <span className="bh-summary-label">Total debits</span>
+                <span className="bh-summary-value bh-debit">{fmtMoney(totalDebits)}</span>
+              </div>
+              <div className="bh-summary-item">
+                <span className="bh-summary-label">Rows</span>
+                <span className="bh-summary-value">{bonusLedger.length}</span>
+              </div>
+            </div>
+
+            {bonusLedger.length === 0 ? (
+              <div className="empty-state">No bonus-ledger entries for this player.</div>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Type</th>
+                    <th>Provider</th>
+                    <th>Amount</th>
+                    <th>Balance after</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bonusLedger.map((r) => (
+                    <tr key={r.id} className={isCredit(r.type) ? 'row-credit' : 'row-debit'}>
+                      <td>{formatDateTime(r.createdAt)}</td>
+                      <td>
+                        <span className={`status-badge ${isCredit(r.type) ? 'completed' : 'failed'}`}>
+                          {r.type}
+                        </span>
+                      </td>
+                      <td>{r.provider || '-'}</td>
+                      <td className={isCredit(r.type) ? 'bh-credit' : 'bh-debit'}>
+                        {isCredit(r.type) ? '+' : '-'}{fmtMoney(r.amount)}
+                      </td>
+                      <td>{fmtMoney(r.balanceAfter)}</td>
+                      <td className="mono small" title={r.referenceId}>{shortId(r.referenceId, 18)}</td>
+                      <td className="small">{r.description || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         );

@@ -551,10 +551,21 @@ export const getBetHistorySummary = (accountId, params = {}) =>
   apiRequest(`/api/admin/bet-history/summary/${accountId}${buildQuery(params)}`);
 
 /**
+ * GET /api/admin/transfer-history/providers
+ * Returns the list of provider keys the saga ledger supports
+ * (acewin, allbet, awc, bigpot, dragonsoft, evo888h5-bonus, funta, ibc,
+ *  jdb, joker, lucky365, m9, pegasus, pussy888, rich88, scr888h5,
+ *  spadegaming, vpower, win568, win8 — 20 in total).
+ */
+export const getTransferHistoryProviders = () =>
+  apiRequest('/api/admin/transfer-history/providers');
+
+/**
  * GET /api/admin/transfer-history/{provider}
- * Sister endpoint for transfer-wallet providers (jdb, scr888h5).
+ * Saga session rows for one transfer-wallet provider (DEPOSIT / WITHDRAW,
+ * with status PENDING / CONFIRMED / RECONCILING / FAILED).
  *
- * @param {string} provider - 'jdb' or 'scr888h5'
+ * @param {string} provider - one of the 20 keys returned by getTransferHistoryProviders
  * @param {string} accountId - Required
  * @param {Object} params - { direction: 'DEPOSIT'|'WITHDRAW', status, limit, offset }
  */
@@ -563,16 +574,32 @@ export const getTransferHistoryByProvider = (provider, accountId, params = {}) =
 
 /**
  * GET /api/admin/transfer-history/{provider}/count
+ * Same filter params as the list endpoint.
  */
 export const getTransferHistoryByProviderCount = (provider, accountId, params = {}) =>
   apiRequest(`/api/admin/transfer-history/${provider}/count${buildQuery({ accountId, ...params })}`);
 
 /**
- * GET /api/admin/transfer-history/{accountId}
- * Combined transfer-wallet snapshot across jdb + scr888h5.
+ * GET /api/admin/transfer-history/summary/{accountId}
+ * Cross-provider transfer-wallet snapshot across all 20 providers — returns
+ * `{ accountId, <provider>: { total, rows }, ..., grandTotal }`.
+ * Query: limit (1–100, default 10), direction, status apply uniformly.
  */
 export const getTransferHistorySummary = (accountId, params = {}) =>
-  apiRequest(`/api/admin/transfer-history/${accountId}${buildQuery(params)}`);
+  apiRequest(`/api/admin/transfer-history/summary/${accountId}${buildQuery(params)}`);
+
+/**
+ * GET /api/admin/bonus-ledger/{accountId}
+ * Single bonus_wallet ledger per player — credits (grant / provider withdraw)
+ * and debits (revoke / provider deposit / clear) in newest-first order.
+ *
+ * Row shape: { id, accountId, type, amount, balanceAfter, referenceId,
+ *              provider, description, createdAt }
+ * Type values: CREDIT_GRANT, CREDIT_REFUND, CREDIT_PROVIDER_WITHDRAW,
+ *              DEBIT_REVOKE, DEBIT_PROVIDER_DEPOSIT, DEBIT_CLEAR_BALANCE.
+ */
+export const getBonusLedger = (accountId) =>
+  apiRequest(`/api/admin/bonus-ledger/${accountId}`);
 
 // ============================================
 // HOT CHATS — reusable quick-reply messages
