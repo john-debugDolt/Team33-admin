@@ -360,34 +360,33 @@ const Transactions = () => {
                     <td className="text-muted" style={{ fontSize: '12px' }}>{formatDate(tx.createdAt)}</td>
                     <td>{getStatusBadge(tx.status)}</td>
                     <td>
-                      {tx.status === 'PENDING' ? (
-                        <div className="action-btns">
-                          <button
-                            className="action-btn approve"
-                            onClick={() => handleApprove(tx)}
-                            disabled={processing === tx.id}
-                          >
-                            {processing === tx.id ? <FiRefreshCw className="spin" /> : <><FiCheck /> Approve</>}
-                          </button>
-                          <button
-                            className="action-btn reject"
-                            onClick={() => openRejectModal(tx)}
-                            disabled={processing === tx.id}
-                          >
-                            <FiX /> Reject
-                          </button>
-                        </div>
-                      ) : (
+                      <div className="action-btns">
                         <button
                           className="action-btn view"
-                          onClick={() => {
-                            setSelectedTransaction(tx);
-                            setShowModal(true);
-                          }}
+                          onClick={() => viewTransactionDetails(tx)}
+                          title="Show full transaction details"
                         >
-                          <FiEye /> View
+                          <FiEye /> Details
                         </button>
-                      )}
+                        {tx.status === 'PENDING' && (
+                          <>
+                            <button
+                              className="action-btn approve"
+                              onClick={() => handleApprove(tx)}
+                              disabled={processing === tx.id}
+                            >
+                              {processing === tx.id ? <FiRefreshCw className="spin" /> : <><FiCheck /> Approve</>}
+                            </button>
+                            <button
+                              className="action-btn reject"
+                              onClick={() => openRejectModal(tx)}
+                              disabled={processing === tx.id}
+                            >
+                              <FiX /> Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))
