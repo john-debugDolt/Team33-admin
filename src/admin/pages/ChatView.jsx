@@ -8,13 +8,15 @@ import {
   FiClock,
   FiRefreshCw,
   FiCalendar,
-  FiGlobe
+  FiGlobe,
+  FiInfo,
 } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
 import { accountService } from '../../services/accountService';
 import { getAccountDetails } from '../../services/apiService';
 import HotChatsBar from '../components/HotChats/HotChatsBar';
+import UserDetailsModal from '../components/UserDetailsModal';
 
 const ChatView = () => {
   const { sessionId } = useParams();
@@ -24,6 +26,10 @@ const ChatView = () => {
 
   const [session, setSession] = useState(null);
   const [customer, setCustomer] = useState(null);
+  // Toggles the Users-page-style UserDetailsModal so staff can pull bet
+  // history / wallet / commission for the player on this chat without
+  // bouncing over to the Users page.
+  const [showAccountModal, setShowAccountModal] = useState(false);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -382,6 +388,30 @@ const ChatView = () => {
               <strong style={{ color: '#111827' }}>
                 {fullName || session?.userName || session?.accountId || 'Unknown'}
               </strong>
+              {session?.accountId && (
+                <button
+                  type="button"
+                  onClick={() => setShowAccountModal(true)}
+                  title="View account details (bet history, wallet, commission, referrals)"
+                  style={{
+                    marginLeft: '4px',
+                    padding: '2px 8px',
+                    fontSize: '11px',
+                    background: '#eef2ff',
+                    color: '#4338ca',
+                    border: '1px solid #c7d2fe',
+                    borderRadius: '999px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    lineHeight: 1.2,
+                  }}
+                >
+                  <FiInfo size={11} />
+                  Details
+                </button>
+              )}
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
               <FiCalendar size={12} color="#6b7280" />
@@ -614,6 +644,22 @@ const ChatView = () => {
           30% { transform: translateY(-4px); opacity: 1; }
         }
       `}</style>
+
+      {/* Account-details modal — opened from the Details chip next to the
+          customer name in the conversation header. */}
+      {showAccountModal && session?.accountId && (
+        <UserDetailsModal
+          user={{
+            accountId: session.accountId,
+            firstName: customer?.firstName || '',
+            lastName: customer?.lastName || '',
+            phoneNumber: customer?.phoneNumber || '',
+            email: customer?.email || '',
+            ...(customer || {}),
+          }}
+          onClose={() => setShowAccountModal(false)}
+        />
+      )}
     </div>
   );
 };

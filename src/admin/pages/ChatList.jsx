@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMessageSquare, FiVolume2, FiVolumeX, FiUser, FiClock, FiRefreshCw, FiTrash2 } from 'react-icons/fi';
+import { FiMessageSquare, FiVolume2, FiVolumeX, FiUser, FiClock, FiRefreshCw, FiTrash2, FiInfo } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
 import { accountService } from '../../services/accountService';
+import UserDetailsModal from '../components/UserDetailsModal';
 
 const ChatList = () => {
   const navigate = useNavigate();
@@ -16,6 +17,24 @@ const ChatList = () => {
   // Cache of accountId -> account object so we don't refetch the same
   // customer every poll tick. Populated lazily as new sessions show up.
   const [accountsByid, setAccountsByid] = useState({});
+  // Account-details modal (mirrors the one on the Users page) so staff can
+  // click an accountId in a chat row and see bet history / wallet / commission
+  // without leaving the chat surface.
+  const [selectedUser, setSelectedUser] = useState(null);
+
+  const openUserDetails = (e, chat) => {
+    e.stopPropagation(); // don't fall through to row's onClick -> chat view
+    if (!chat?.accountId) return;
+    const acct = accountsByid[chat.accountId] || {};
+    setSelectedUser({
+      accountId: chat.accountId,
+      firstName: acct.firstName || '',
+      lastName: acct.lastName || '',
+      phoneNumber: acct.phoneNumber || '',
+      email: acct.email || '',
+      ...acct,
+    });
+  };
 
   const filters = ['ALL', 'WAITING', 'ACTIVE', 'CLOSED'];
 
@@ -306,9 +325,35 @@ const ChatList = () => {
                       const acct = chat.accountId ? accountsByid[chat.accountId] : null
                       const fullName = acct ? `${acct.firstName || ''} ${acct.lastName || ''}`.trim() : ''
                       return (
-                        <strong style={{ marginRight: '8px' }}>
-                          {fullName || chat.username}
-                        </strong>
+                        <>
+                          <strong style={{ marginRight: '6px' }}>
+                            {fullName || chat.username}
+                          </strong>
+                          {chat.accountId && (
+                            <button
+                              type="button"
+                              onClick={(e) => openUserDetails(e, chat)}
+                              title="View account details"
+                              style={{
+                                marginRight: '8px',
+                                padding: '2px 8px',
+                                fontSize: '11px',
+                                background: '#eef2ff',
+                                color: '#4338ca',
+                                border: '1px solid #c7d2fe',
+                                borderRadius: '999px',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                lineHeight: 1.2,
+                              }}
+                            >
+                              <FiInfo size={11} />
+                              Details
+                            </button>
+                          )}
+                        </>
                       )
                     })()}
                     <span
@@ -421,6 +466,15 @@ const ChatList = () => {
           background: #f9fafb !important;
         }
       `}</style>
+
+      {/* Account-details modal — same component the Users page uses, opened
+          from the Details chip on each chat row. */}
+      {selectedUser && (
+        <UserDetailsModal
+          user={selectedUser}
+          onClose={() => setSelectedUser(null)}
+        />
+      )}
     </div>
   );
 };
