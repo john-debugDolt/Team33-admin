@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiPlus, FiEdit2, FiTrash2, FiToggleLeft, FiToggleRight, FiRefreshCw, FiAlertCircle } from 'react-icons/fi';
 import { keycloakService } from '../../services/keycloakService';
+import { deleteBank } from '../../services/apiService';
 
 // API base - call api.team33.mx (admin service with JWT auth)
 const API_BASE = 'https://api.team33.mx';
@@ -128,22 +129,15 @@ const ManageBank = () => {
     }
   };
 
-  // Delete bank with JWT auth
+  // Delete bank via the admin-service endpoint (DELETE /api/admin/banks/{id}).
+  // Goes through apiService.deleteBank so JWT + base URL are handled centrally.
   const handleDeleteBank = async (bank) => {
     if (!confirm(`Are you sure you want to delete ${bank.bankName}?`)) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/banks/${bank.id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders()
-      });
-
-      if (response.ok) {
-        setBanks(banks.filter(b => b.id !== bank.id));
-      } else {
-        alert('Failed to delete bank');
-      }
-    } catch (err) {
-      alert('Network error deleting bank');
+    const result = await deleteBank(bank.id);
+    if (result.success) {
+      setBanks(banks.filter(b => b.id !== bank.id));
+    } else {
+      alert(result.error || 'Failed to delete bank');
     }
   };
 

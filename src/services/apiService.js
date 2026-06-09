@@ -283,14 +283,64 @@ export const updateBankStatus = (bankId, status) =>
 
 /**
  * Get banks by status
- * @param {string} status - Status: ACTIVE, INACTIVE
+ * @param {string} status - ACTIVE | INACTIVE | SUSPENDED
  */
 export const getBanksByStatus = (status) => apiRequest(`/api/admin/banks/status/${status}`);
 
 /**
  * Get bank statistics
+ * Returns { active, inactive, suspended, total }.
  */
 export const getBankStats = () => apiRequest('/api/admin/banks/stats');
+
+/**
+ * DELETE /api/admin/banks/{bankId}
+ * Hard-deletes a bank. Historical deposit/withdrawal rows keep their
+ * bankId reference but stop resolving to a current bank record.
+ * 204 on success; 404 if the bank doesn't exist.
+ */
+export const deleteBank = (bankId) =>
+  apiRequest(`/api/admin/banks/${bankId}`, { method: 'DELETE' });
+
+/**
+ * POST /api/admin/withdrawals/{withdrawId}/attach-bank
+ * Records which house bank an admin actually paid the withdrawal out of,
+ * so we have an audit trail and so the per-bank ledger endpoints surface
+ * it. Snapshots the bank's payId (fallback accountNumber) onto the
+ * withdrawal as bankIdentifier — a later bank rename/delete won't rewrite
+ * the historical row. Withdraw must exist (any status); body validation
+ * 400 if bankId missing; 404 if either side doesn't exist.
+ *
+ * @param {string} withdrawId - The withdrawId (e.g. WDR…)
+ * @param {number} bankId    - The house bank id used for the payout
+ */
+export const attachBankToWithdrawal = (withdrawId, bankId) =>
+  apiRequest(`/api/admin/withdrawals/${withdrawId}/attach-bank`, {
+    method: 'POST',
+    body: JSON.stringify({ bankId }),
+  });
+
+/**
+ * GET /api/admin/banks/{bankId}/deposits
+ * All deposits routed through this house bank (newest first).
+ */
+export const getBankDeposits = (bankId) =>
+  apiRequest(`/api/admin/banks/${bankId}/deposits`);
+
+/**
+ * GET /api/admin/banks/{bankId}/withdrawals
+ * All withdrawals attached to this house bank via attachBankToWithdrawal
+ * (newest first, admin view — full unmasked bank details).
+ */
+export const getBankWithdrawals = (bankId) =>
+  apiRequest(`/api/admin/banks/${bankId}/withdrawals`);
+
+/**
+ * GET /api/admin/banks/{bankId}/transactions
+ * Combined { deposits, withdrawals } ledger for the house bank.
+ */
+export const getBankTransactions = (bankId) =>
+  apiRequest(`/api/admin/banks/${bankId}/transactions`);
 
 // ============================================
 // WALLET MANAGEMENT (ADMIN only)

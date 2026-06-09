@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { FiSearch, FiInbox, FiCheck, FiX, FiClock, FiRefreshCw, FiEye } from 'react-icons/fi';
+import { FiSearch, FiInbox, FiCheck, FiX, FiClock, FiRefreshCw, FiEye, FiCreditCard } from 'react-icons/fi';
 import { transactionService } from '../services/transactionService';
+import { attachBankToWithdrawal, getBanksByStatus } from '../../services/apiService';
 import { formatDateTime } from '../utils/dateUtils';
 
 const Transactions = () => {
@@ -32,6 +33,11 @@ const Transactions = () => {
   const [modalMode, setModalMode] = useState('view'); // 'view' or 'reject'
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [withdrawalDetails, setWithdrawalDetails] = useState(null);
+  // Attach-bank UI state for withdrawals — admin records which house bank
+  // the payout was made from so the per-bank ledger surfaces it.
+  const [activeBanks, setActiveBanks] = useState([]);
+  const [selectedBankId, setSelectedBankId] = useState('');
+  const [attachingBank, setAttachingBank] = useState(false);
 
   // Fetch transactions
   const fetchTransactions = async () => {
@@ -124,19 +130,52 @@ const Transactions = () => {
     setModalMode('view');
     setShowModal(true);
     setWithdrawalDetails(null);
+    setSelectedBankId('');
 
     // Fetch full details for withdrawals
     if (transaction.type === 'WITHDRAWAL') {
       setLoadingDetails(true);
       try {
-        const result = await transactionService.getWithdrawalDetails(transaction.originalId || transaction.id);
-        if (result.success) {
-          setWithdrawalDetails(result.withdrawal);
+        // Withdrawal details + active-bank list run in parallel — both are
+        // needed by the Attach Bank section in the modal.
+        const [details, banksResult] = await Promise.all([
+          transactionService.getWithdrawalDetails(transaction.originalId || transaction.id),
+          activeBanks.length === 0 ? getBanksByStatus('ACTIVE') : Promise.resolve(null),
+        ]);
+        if (details.success) {
+          setWithdrawalDetails(details.withdrawal);
+          // Pre-select whatever bank was previously attached so the admin
+          // can see at a glance which one it is, and re-submitting is a no-op.
+          if (details.withdrawal?.bankId) setSelectedBankId(String(details.withdrawal.bankId));
+        }
+        if (banksResult?.success) {
+          setActiveBanks(Array.isArray(banksResult.data) ? banksResult.data : []);
         }
       } catch (error) {
         console.error('Error fetching withdrawal details:', error);
       }
       setLoadingDetails(false);
+    }
+  };
+
+  // Attach (or re-attach) an internal house bank to the displayed withdrawal.
+  // Hits POST /api/admin/withdrawals/{withdrawId}/attach-bank — backend
+  // snapshots payId (fallback accountNumber) onto the row as bankIdentifier
+  // so a later bank rename/delete doesn't rewrite history.
+  const handleAttachBank = async () => {
+    if (!selectedBankId) return;
+    const withdrawId = withdrawalDetails?.withdrawId
+      || selectedTransaction?.originalId
+      || selectedTransaction?.id;
+    if (!withdrawId) return;
+    setAttachingBank(true);
+    const result = await attachBankToWithdrawal(withdrawId, Number(selectedBankId));
+    setAttachingBank(false);
+    if (result.success) {
+      setWithdrawalDetails(result.data); // updated WithdrawResponse incl. bankId + bankIdentifier
+      alert('Bank attached to withdrawal');
+    } else {
+      alert(result.error || 'Failed to attach bank');
     }
   };
 
@@ -665,6 +704,62 @@ const Transactions = () => {
                             Ref: {withdrawalDetails.externalReference}
                           </p>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Attach House Bank — record which internal bank paid this
+                      withdrawal so the per-bank ledger surfaces it (per doc §3.1). */}
+                  {withdrawalDetails && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <h4 style={{
+                        fontSize: '14px', color: '#374151', marginBottom: '12px',
+                        fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px',
+                      }}>
+                        <FiCreditCard /> House Bank Used
+                      </h4>
+                      <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
+                        {withdrawalDetails.bankId ? (
+                          <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#065f46' }}>
+                            Attached: bank #{withdrawalDetails.bankId}
+                            {withdrawalDetails.bankIdentifier ? ` (${withdrawalDetails.bankIdentifier})` : ''}
+                          </p>
+                        ) : (
+                          <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#6b7280' }}>
+                            No internal bank attached yet — record the one used for payout.
+                          </p>
+                        )}
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select
+                            value={selectedBankId}
+                            onChange={(e) => setSelectedBankId(e.target.value)}
+                            style={{
+                              flex: '1 1 220px', padding: '8px 10px', fontSize: '13px',
+                              border: '1px solid #d1d5db', borderRadius: '6px',
+                            }}
+                            disabled={attachingBank}
+                          >
+                            <option value="">Select active house bank…</option>
+                            {activeBanks.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.bankName} — {b.accountName} ({b.payId || b.accountNumber || `id:${b.id}`})
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            className="btn btn-primary"
+                            disabled={!selectedBankId || attachingBank
+                              || String(withdrawalDetails.bankId || '') === String(selectedBankId)}
+                            onClick={handleAttachBank}
+                            style={{ padding: '8px 14px' }}
+                          >
+                            {attachingBank
+                              ? 'Attaching…'
+                              : withdrawalDetails.bankId
+                                ? 'Re-attach'
+                                : 'Attach Bank'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
