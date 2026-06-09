@@ -709,8 +709,10 @@ const Transactions = () => {
                   )}
 
                   {/* Attach House Bank — record which internal bank paid this
-                      withdrawal so the per-bank ledger surfaces it (per doc §3.1). */}
-                  {withdrawalDetails && (
+                      withdrawal so the per-bank ledger surfaces it (per doc §3.1).
+                      Renders for any WITHDRAWAL row even when the full details
+                      fetch hasn't returned yet, so staff can attach immediately. */}
+                  {selectedTransaction.type === 'WITHDRAWAL' && (
                     <div style={{ marginBottom: '20px' }}>
                       <h4 style={{
                         fontSize: '14px', color: '#374151', marginBottom: '12px',
@@ -719,14 +721,16 @@ const Transactions = () => {
                         <FiCreditCard /> House Bank Used
                       </h4>
                       <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '12px' }}>
-                        {withdrawalDetails.bankId ? (
+                        {withdrawalDetails?.bankId ? (
                           <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#065f46' }}>
                             Attached: bank #{withdrawalDetails.bankId}
                             {withdrawalDetails.bankIdentifier ? ` (${withdrawalDetails.bankIdentifier})` : ''}
                           </p>
                         ) : (
                           <p style={{ margin: '0 0 10px', fontSize: '13px', color: '#6b7280' }}>
-                            No internal bank attached yet — record the one used for payout.
+                            {loadingDetails
+                              ? 'Loading attached bank…'
+                              : 'No internal bank attached yet — record the one used for payout.'}
                           </p>
                         )}
                         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -739,7 +743,9 @@ const Transactions = () => {
                             }}
                             disabled={attachingBank}
                           >
-                            <option value="">Select active house bank…</option>
+                            <option value="">
+                              {activeBanks.length === 0 ? 'Loading active banks…' : 'Select active house bank…'}
+                            </option>
                             {activeBanks.map((b) => (
                               <option key={b.id} value={b.id}>
                                 {b.bankName} — {b.accountName} ({b.payId || b.accountNumber || `id:${b.id}`})
@@ -749,13 +755,13 @@ const Transactions = () => {
                           <button
                             className="btn btn-primary"
                             disabled={!selectedBankId || attachingBank
-                              || String(withdrawalDetails.bankId || '') === String(selectedBankId)}
+                              || String(withdrawalDetails?.bankId || '') === String(selectedBankId)}
                             onClick={handleAttachBank}
                             style={{ padding: '8px 14px' }}
                           >
                             {attachingBank
                               ? 'Attaching…'
-                              : withdrawalDetails.bankId
+                              : withdrawalDetails?.bankId
                                 ? 'Re-attach'
                                 : 'Attach Bank'}
                           </button>
