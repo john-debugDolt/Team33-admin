@@ -245,62 +245,64 @@ export const getWithdrawalsForAccount = (accountId) =>
 // BANK MANAGEMENT (ADMIN only)
 // ============================================
 
-/**
- * Get all banks
- */
-export const getAllBanks = () => apiRequest('/api/admin/banks');
+// New canonical bank surface: /api/banks/** (admin-service BankProxyController,
+// gated to STAFF or ADMIN realm role). Legacy /api/admin/banks/** still works
+// — no breaking change for anyone already integrated. We point at the new
+// shorter paths so future tooling stays consistent.
 
 /**
- * Get bank by ID
- * @param {string} bankId - Bank ID
+ * GET /api/banks
+ * All banks (admin view, every status).
  */
-export const getBankById = (bankId) => apiRequest(`/api/admin/banks/${bankId}`);
+export const getAllBanks = () => apiRequest('/api/banks');
 
 /**
- * Create a new bank
- * @param {Object} bankData - Bank details
- * @param {string} bankData.bankName - Bank name
- * @param {string} bankData.accountNumber - Account number
- * @param {string} bankData.accountName - Account holder name
- * @param {string} bankData.bsb - BSB code
+ * GET /api/banks/{bankId}
+ */
+export const getBankById = (bankId) => apiRequest(`/api/banks/${bankId}`);
+
+/**
+ * POST /api/banks
+ * Body: { bankName, accountName, bsb, accountNumber, payId }
+ * bankName + accountName required; at least one of accountNumber / payId.
+ * Returns 201 BankResponse; 400 on validation / duplicate identifier.
  */
 export const createBank = (bankData) =>
-  apiRequest('/api/admin/banks', {
+  apiRequest('/api/banks', {
     method: 'POST',
     body: JSON.stringify(bankData),
   });
 
 /**
- * Update bank status
- * @param {string} bankId - Bank ID
- * @param {string} status - New status: ACTIVE, INACTIVE
+ * PUT /api/banks/{bankId}/status
+ * Body: { status: "ACTIVE" | "INACTIVE" | "SUSPENDED" }
  */
 export const updateBankStatus = (bankId, status) =>
-  apiRequest(`/api/admin/banks/${bankId}/status`, {
+  apiRequest(`/api/banks/${bankId}/status`, {
     method: 'PUT',
     body: JSON.stringify({ status }),
   });
 
 /**
- * Get banks by status
- * @param {string} status - ACTIVE | INACTIVE | SUSPENDED
+ * GET /api/banks/status/{status}
+ * @param {"ACTIVE"|"INACTIVE"|"SUSPENDED"} status
  */
-export const getBanksByStatus = (status) => apiRequest(`/api/admin/banks/status/${status}`);
+export const getBanksByStatus = (status) => apiRequest(`/api/banks/status/${status}`);
 
 /**
- * Get bank statistics
+ * GET /api/banks/stats
  * Returns { active, inactive, suspended, total }.
  */
-export const getBankStats = () => apiRequest('/api/admin/banks/stats');
+export const getBankStats = () => apiRequest('/api/banks/stats');
 
 /**
- * DELETE /api/admin/banks/{bankId}
+ * DELETE /api/banks/{bankId}
  * Hard-deletes a bank. Historical deposit/withdrawal rows keep their
  * bankId reference but stop resolving to a current bank record.
  * 204 on success; 404 if the bank doesn't exist.
  */
 export const deleteBank = (bankId) =>
-  apiRequest(`/api/admin/banks/${bankId}`, { method: 'DELETE' });
+  apiRequest(`/api/banks/${bankId}`, { method: 'DELETE' });
 
 /**
  * POST /api/admin/withdrawals/{withdrawId}/attach-bank
@@ -310,6 +312,8 @@ export const deleteBank = (bankId) =>
  * withdrawal as bankIdentifier — a later bank rename/delete won't rewrite
  * the historical row. Withdraw must exist (any status); body validation
  * 400 if bankId missing; 404 if either side doesn't exist.
+ *
+ * (Lives under the withdrawals surface, NOT /api/banks.)
  *
  * @param {string} withdrawId - The withdrawId (e.g. WDR…)
  * @param {number} bankId    - The house bank id used for the payout
@@ -321,26 +325,26 @@ export const attachBankToWithdrawal = (withdrawId, bankId) =>
   });
 
 /**
- * GET /api/admin/banks/{bankId}/deposits
+ * GET /api/banks/{bankId}/deposits
  * All deposits routed through this house bank (newest first).
  */
 export const getBankDeposits = (bankId) =>
-  apiRequest(`/api/admin/banks/${bankId}/deposits`);
+  apiRequest(`/api/banks/${bankId}/deposits`);
 
 /**
- * GET /api/admin/banks/{bankId}/withdrawals
+ * GET /api/banks/{bankId}/withdrawals
  * All withdrawals attached to this house bank via attachBankToWithdrawal
  * (newest first, admin view — full unmasked bank details).
  */
 export const getBankWithdrawals = (bankId) =>
-  apiRequest(`/api/admin/banks/${bankId}/withdrawals`);
+  apiRequest(`/api/banks/${bankId}/withdrawals`);
 
 /**
- * GET /api/admin/banks/{bankId}/transactions
+ * GET /api/banks/{bankId}/transactions
  * Combined { deposits, withdrawals } ledger for the house bank.
  */
 export const getBankTransactions = (bankId) =>
-  apiRequest(`/api/admin/banks/${bankId}/transactions`);
+  apiRequest(`/api/banks/${bankId}/transactions`);
 
 // ============================================
 // WALLET MANAGEMENT (ADMIN only)
