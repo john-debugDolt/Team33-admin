@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { FiX, FiUser, FiPhone, FiCalendar, FiCopy, FiCheck, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 import { formatDateTime } from '../utils/dateUtils';
 import {
@@ -117,6 +117,14 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
   // surfaces in the modal without any frontend change.
   const [transferRows, setTransferRows] = useState({});
   const [transferProviders, setTransferProviders] = useState([]);
+  // Lazy-load infinite scroll for transfer-wallet provider drilldown.
+  // The bet-history count endpoint isn't reliable for transfer providers,
+  // so we use a "fetch until short batch" approach: keep loading the next
+  // page as the sentinel scrolls into view, stop once a response returns
+  // fewer rows than the limit.
+  const [transferHasMore, setTransferHasMore] = useState(false);
+  const [transferLoadingMore, setTransferLoadingMore] = useState(false);
+  const lazyLoadSentinelRef = useRef(null);
   // Bonus ledger (newest-first) for the BONUS LEDGER tab.
   const [bonusLedger, setBonusLedger] = useState([]);
 
@@ -215,6 +223,62 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Fetch the next page of transfer-history rows for the currently-selected
+  // provider and append to the existing list. Used by the IntersectionObserver
+  // sentinel below to drive an infinite-scroll experience for transfer-wallet
+  // providers (Rich88 / SCR888H5 / VPower / …) where the upstream doesn't
+  // give us a usable total count.
+  const loadMoreTransferRows = useCallback(async () => {
+    if (!betProvider || !user?.accountId) return;
+    if (!transferHasMore || transferLoadingMore) return;
+    setTransferLoadingMore(true);
+    try {
+      const params = {
+        ...(betFilterStatus ? { status: betFilterStatus } : {}),
+        limit: BET_HISTORY_LIMIT,
+        offset: betRows.length,
+      };
+      const r = await getTransferHistoryByProvider(betProvider, user.accountId, params);
+      const newRows = r.success && Array.isArray(r.data) ? r.data : [];
+      if (newRows.length > 0) {
+        setBetRows((prev) => [...prev, ...newRows]);
+      }
+      setTransferHasMore(newRows.length >= BET_HISTORY_LIMIT);
+    } catch (err) {
+      console.error('[BET HISTORY] load more failed:', err);
+      // Don't flip hasMore off on transient errors — let the observer retry
+      // when the sentinel scrolls back into view.
+    } finally {
+      setTransferLoadingMore(false);
+    }
+  }, [
+    betProvider,
+    user?.accountId,
+    transferHasMore,
+    transferLoadingMore,
+    betFilterStatus,
+    betRows.length,
+  ]);
+
+  // IntersectionObserver: when the sentinel scrolls into the viewport, kick
+  // off a "load more" fetch. Only armed for transfer-wallet providers — the
+  // non-transfer flow still uses explicit page buttons (those have a real
+  // count endpoint).
+  useEffect(() => {
+    const node = lazyLoadSentinelRef.current;
+    if (!node) return;
+    const isTransfer = TRANSFER_WALLET_PROVIDERS.includes(betProvider);
+    if (!isTransfer || !transferHasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreTransferRows();
+      },
+      { rootMargin: '200px 0px' }
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [TRANSFER_WALLET_PROVIDERS, betProvider, transferHasMore, loadMoreTransferRows]);
 
   // Handle bet history pagination
   const handleBetHistoryPageChange = async (newPage) => {
@@ -368,7 +432,14 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
 
               tasks.push(
                 listFn(betProvider, user.accountId, filterParams).then((r) => {
-                  setBetRows(r.success && Array.isArray(r.data) ? r.data : []);
+                  const rows = r.success && Array.isArray(r.data) ? r.data : [];
+                  setBetRows(rows);
+                  if (isTransfer) {
+                    // We don't know the upstream total — assume there's more
+                    // whenever the first page came back full. Subsequent loads
+                    // will mark hasMore false when a short batch arrives.
+                    setTransferHasMore(rows.length >= BET_HISTORY_LIMIT);
+                  }
                 })
               );
 
@@ -389,6 +460,7 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
               // Overview-only view — clear per-provider rows
               setBetRows([]);
               setBetRowsTotal(0);
+              setTransferHasMore(false);
             }
 
             await Promise.all(tasks);
@@ -962,19 +1034,46 @@ const UserDetailsModal = ({ user: userProp, accountId: accountIdProp, onClose })
                 {betRows.length === 0 ? (
                   <div className="empty-state">No {isTransfer ? 'transfers' : 'callbacks'} for this provider with the current filters.</div>
                 ) : isTransfer ? (
-                  <table className="data-table compact bh-table">
-                    <thead>
-                      <tr>
-                        <th>Time</th>
-                        <th>Direction</th>
-                        <th>Tx ID</th>
-                        <th>Amount</th>
-                        <th>Balance</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>{betRows.map(renderTransferRow)}</tbody>
-                  </table>
+                  <>
+                    <table className="data-table compact bh-table">
+                      <thead>
+                        <tr>
+                          <th>Time</th>
+                          <th>Direction</th>
+                          <th>Tx ID</th>
+                          <th>Amount</th>
+                          <th>Balance</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>{betRows.map(renderTransferRow)}</tbody>
+                    </table>
+                    {/* Infinite-scroll sentinel for transfer providers. The
+                        observer fetches the next batch when this scrolls into
+                        view; falls back to a tap target for keyboard users. */}
+                    {transferHasMore && (
+                      <div
+                        ref={lazyLoadSentinelRef}
+                        className="bh-lazy-sentinel"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <button
+                          type="button"
+                          className="bh-lazy-loadmore"
+                          onClick={loadMoreTransferRows}
+                          disabled={transferLoadingMore}
+                        >
+                          {transferLoadingMore ? 'Loading…' : 'Load more'}
+                        </button>
+                      </div>
+                    )}
+                    {!transferHasMore && betRows.length > 0 && (
+                      <div className="bh-lazy-end">
+                        End of history — {betRows.length} row{betRows.length === 1 ? '' : 's'} loaded.
+                      </div>
+                    )}
+                  </>
                 ) : betViewMode === 'rounds' ? (
                   <table className="data-table compact bh-table">
                     <thead>
