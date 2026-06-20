@@ -7,6 +7,10 @@
     <meta name="theme-color" content="#0f0f0f" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/mobilepwalogo-192.png" />
+    <!-- iOS keeps the apple- prefixed tag; Chrome / Android want the
+         vendor-neutral mobile-web-app-capable one. Ship both so the
+         deprecation warning goes away and older iOS still works. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Team33 Admin" />
