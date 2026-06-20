@@ -74,7 +74,10 @@ const lookupUserInfo = async (accountId) => {
   // Try API lookup
   try {
     const headers = getHeaders();
-    const response = await fetch(`${API_BASE}/api/accounts/${accountId}`, { headers });
+    // Admin BFF only exposes account lookup under /api/admin/accounts/{id}
+    // (the plain /api/accounts/{id} path is a 404 on api.team33.mx — that
+    // shape only exists on accounts.team33.mx for the player surface).
+    const response = await fetch(`${API_BASE}/api/admin/accounts/${accountId}`, { headers });
     if (response.ok) {
       const account = await response.json();
       const userInfo = {

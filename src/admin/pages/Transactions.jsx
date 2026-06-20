@@ -3,6 +3,7 @@ import { FiSearch, FiInbox, FiCheck, FiX, FiClock, FiRefreshCw, FiEye, FiCreditC
 import { transactionService } from '../services/transactionService';
 import { attachBankToWithdrawal, getBanksByStatus } from '../../services/apiService';
 import { formatDateTime } from '../utils/dateUtils';
+import UserDetailsModal from '../components/UserDetailsModal';
 
 const Transactions = () => {
   const [formData, setFormData] = useState({
@@ -28,6 +29,10 @@ const Transactions = () => {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(null);
   const [selectedTransaction, setSelectedTransaction] = useState(null);
+  // Clicking an accountId cell opens the existing UserDetailsModal so the
+  // operator can drill into wallet / bet history / chat for that user
+  // without leaving the transactions feed.
+  const [userModalAccountId, setUserModalAccountId] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
   const [modalMode, setModalMode] = useState('view'); // 'view' or 'reject'
@@ -360,7 +365,24 @@ const Transactions = () => {
                     </td>
                     <td>
                       <div>
-                        <strong>{tx.username || tx.accountId}</strong>
+                        <button
+                          type="button"
+                          onClick={() => tx.accountId && setUserModalAccountId(tx.accountId)}
+                          title={tx.accountId ? `Open ${tx.accountId} details` : ''}
+                          disabled={!tx.accountId}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            font: 'inherit',
+                            color: 'var(--accent, #22c55e)',
+                            cursor: tx.accountId ? 'pointer' : 'default',
+                            textDecoration: tx.accountId ? 'underline' : 'none',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <strong>{tx.username || tx.accountId}</strong>
+                        </button>
                         {tx.phone && <div style={{ fontSize: '11px', color: '#666' }}>{tx.phone}</div>}
                       </div>
                     </td>
@@ -964,6 +986,13 @@ const Transactions = () => {
           }
         }
       `}</style>
+
+      {userModalAccountId && (
+        <UserDetailsModal
+          user={{ accountId: userModalAccountId }}
+          onClose={() => setUserModalAccountId(null)}
+        />
+      )}
     </div>
   );
 };
