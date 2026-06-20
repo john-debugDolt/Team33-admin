@@ -989,7 +989,11 @@ const Transactions = () => {
 
       {userModalAccountId && (
         <UserDetailsModal
-          user={{ accountId: userModalAccountId }}
+          // Pass accountId (not a half-filled `user` object) so the modal
+          // runs its getAccountDetails lookup — same path the Users page
+          // gets to populated user records by. A `user` prop short-circuits
+          // that lookup and leaves every field as "-" / Unknown User.
+          accountId={userModalAccountId}
           onClose={() => setUserModalAccountId(null)}
         />
       )}
