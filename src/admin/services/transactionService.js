@@ -5,14 +5,9 @@
  */
 
 // Admin BFF — every admin call (deposits AND withdrawals) goes through
-// api.team33.mx. Calling accounts.team33.mx directly for withdrawals
-// tripped CORS because that ALB doesn't include admin.team33.mx in
-// Access-Control-Allow-Origin; the api.team33.mx BFF does and forwards
-// to wallet-service internally.
+// api.team33.mx, which CORS-allows admin.team33.mx and forwards to
+// wallet-service internally.
 const API_BASE = 'https://api.team33.mx';
-// Kept as an alias so the (5) references below don't need to change shape,
-// but every withdrawal call now resolves through api.team33.mx.
-const ACCOUNTS_API_BASE = API_BASE;
 
 // LocalStorage keys for withdrawals (no API yet)
 const PENDING_TRANSACTIONS_KEY = 'admin_pending_transactions';
@@ -190,25 +185,25 @@ export const transactionService = {
       console.error('Error fetching deposits from API:', error);
     }
 
-    // Fetch withdrawals from API (uses accounts.team33.mx)
+    // Fetch withdrawals from API
     try {
       const headers = getHeaders();
 
       if (filters.status === 'APPROVED' || filters.status === 'COMPLETED') {
-        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'REJECTED') {
-        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       } else if (filters.status === 'ALL' || !filters.status) {
         const [pending, completed, rejected] = await Promise.all([
-          fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-          fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+          fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/api/admin/withdrawals/status/COMPLETED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+          fetch(`${API_BASE}/api/admin/withdrawals/status/REJECTED`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
         ]);
         apiWithdrawals = [...pending, ...completed, ...rejected];
       } else {
-        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/pending`, { headers });
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/pending`, { headers });
         if (response.ok) apiWithdrawals = await response.json();
       }
 
@@ -389,7 +384,7 @@ export const transactionService = {
       }
     }
 
-    // Check if it's a withdrawal (uses accounts.team33.mx with /complete endpoint)
+    // Check if it's a withdrawal (POST /complete on api.team33.mx)
     if (transactionId.startsWith('WD') || transactionId.startsWith('WTH') || transactionId.startsWith('WDR')) {
       try {
         // Use original ID or extract from prefixed ID
@@ -402,7 +397,7 @@ export const transactionService = {
         console.log('[TransactionService] Completing withdrawal:', apiId);
 
         // Use /complete endpoint (not /approve) as per API spec
-        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/${apiId}/complete`, {
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}/complete`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -475,7 +470,7 @@ export const transactionService = {
       }
     }
 
-    // Check if it's a withdrawal (uses accounts.team33.mx)
+    // Check if it's a withdrawal
     if (transactionId.startsWith('WD') || transactionId.startsWith('WTH') || transactionId.startsWith('WDR')) {
       try {
         let apiId = originalId || transactionId;
@@ -486,7 +481,7 @@ export const transactionService = {
 
         console.log('[TransactionService] Rejecting withdrawal:', apiId);
 
-        const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/${apiId}/reject`, {
+        const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}/reject`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -533,7 +528,7 @@ export const transactionService = {
 
       console.log('[TransactionService] Getting withdrawal details:', apiId);
 
-      const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/${apiId}`, { headers });
+      const response = await fetch(`${API_BASE}/api/admin/withdrawals/${apiId}`, { headers });
 
       if (response.ok) {
         const data = await response.json();
@@ -557,7 +552,7 @@ export const transactionService = {
   async getWithdrawalStats() {
     try {
       const headers = getHeaders();
-      const response = await fetch(`${ACCOUNTS_API_BASE}/api/admin/withdrawals/stats`, { headers });
+      const response = await fetch(`${API_BASE}/api/admin/withdrawals/stats`, { headers });
 
       if (response.ok) {
         const data = await response.json();
