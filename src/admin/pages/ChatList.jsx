@@ -6,6 +6,24 @@ import { chatStorageService } from '../../services/chatStorageService';
 import { accountService } from '../../services/accountService';
 import UserDetailsModal from '../components/UserDetailsModal';
 
+// Play a short notification beep using the Web Audio API — no audio file needed.
+const playBeep = () => {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch { /* AudioContext blocked by browser policy — silently skip */ }
+};
+
 const ChatList = () => {
   const navigate = useNavigate();
   const [soundOn, setSoundOn] = useState(true);
@@ -20,6 +38,8 @@ const ChatList = () => {
   // flash them. Keyed by sessionId, value = timestamp of first detection.
   const [flashIds, setFlashIds] = useState({});
   const prevUnreadRef = useRef({});
+  const soundOnRef = useRef(soundOn);
+  useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
 
   const openUserDetails = (e, chat) => {
     e.stopPropagation();
@@ -34,6 +54,13 @@ const ChatList = () => {
       ...acct,
     });
   };
+
+  // Request browser notification permission once on mount
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
 
   const filters = ['ALL', 'WAITING', 'ACTIVE', 'CLOSED'];
 
@@ -107,7 +134,8 @@ const ChatList = () => {
           return new Date(b.lastActivity) - new Date(a.lastActivity);
         });
 
-        // Detect newly-unread sessions since last poll and mark them for flash
+        // Detect newly-unread sessions since last poll — flash, sound, notification
+        const newlyUnread = [];
         setFlashIds((prev) => {
           const next = { ...prev };
           const now = Date.now();
@@ -115,6 +143,10 @@ const ChatList = () => {
             const prevUnread = prevUnreadRef.current[c.sessionId] ?? 0;
             if (c.unread > prevUnread) {
               next[c.sessionId] = now;
+              // Only fire alerts if prevUnread is defined (not first load)
+              if (c.sessionId in prevUnreadRef.current) {
+                newlyUnread.push(c);
+              }
             }
             // Remove flash after 4 seconds
             if (next[c.sessionId] && now - next[c.sessionId] > 4000) {
@@ -123,6 +155,20 @@ const ChatList = () => {
           });
           return next;
         });
+
+        // After state update, fire sound + browser notification for new messages
+        if (newlyUnread.length > 0) {
+          if (soundOnRef.current) playBeep();
+          if ('Notification' in window && Notification.permission === 'granted') {
+            newlyUnread.forEach((c) => {
+              new Notification('New message — Team33 Support', {
+                body: `${c.username}: ${c.message || 'New message'}`,
+                icon: '/favicon.ico',
+                tag: c.sessionId,
+              });
+            });
+          }
+        }
 
         // Update the prev-unread snapshot
         prevUnreadRef.current = Object.fromEntries(
@@ -191,6 +237,12 @@ const ChatList = () => {
 
   const totalUnread = chats.reduce((s, c) => s + (c.unread || 0), 0);
   const waitingCount = chats.filter(c => c.status === 'WAITING').length;
+
+  // Show unread count in browser tab title so staff sees it even when the tab is not focused
+  useEffect(() => {
+    document.title = totalUnread > 0 ? `(${totalUnread}) Live Chats — Admin` : 'Live Chats — Admin';
+    return () => { document.title = 'Team33 Admin'; };
+  }, [totalUnread]);
 
   return (
     <div className="chat-list-page">
