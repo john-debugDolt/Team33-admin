@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiMessageSquare, FiVolume2, FiVolumeX, FiUser, FiClock, FiRefreshCw, FiTrash2, FiInfo } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
@@ -14,16 +14,15 @@ const ChatList = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [dataSource, setDataSource] = useState('');
-  // Cache of accountId -> account object so we don't refetch the same
-  // customer every poll tick. Populated lazily as new sessions show up.
   const [accountsByid, setAccountsByid] = useState({});
-  // Account-details modal (mirrors the one on the Users page) so staff can
-  // click an accountId in a chat row and see bet history / wallet / commission
-  // without leaving the chat surface.
   const [selectedUser, setSelectedUser] = useState(null);
+  // Track which session IDs are "newly unread" since last poll so we can
+  // flash them. Keyed by sessionId, value = timestamp of first detection.
+  const [flashIds, setFlashIds] = useState({});
+  const prevUnreadRef = useRef({});
 
   const openUserDetails = (e, chat) => {
-    e.stopPropagation(); // don't fall through to row's onClick -> chat view
+    e.stopPropagation();
     if (!chat?.accountId) return;
     const acct = accountsByid[chat.accountId] || {};
     setSelectedUser({
@@ -38,19 +37,14 @@ const ChatList = () => {
 
   const filters = ['ALL', 'WAITING', 'ACTIVE', 'CLOSED'];
 
-  // Delete a chat session
   const handleDeleteChat = async (e, chat) => {
-    e.stopPropagation(); // Prevent navigation
+    e.stopPropagation();
     if (!confirm(`Delete chat with ${chat.username}? This cannot be undone.`)) return;
-
     try {
-      // Close session first if not already closed
       if (chat.status !== 'CLOSED') {
         await adminChatService.closeSession(chat.sessionId);
       }
-      // Remove from local cache
       chatStorageService.deleteSession(chat.sessionId);
-      // Refresh list
       fetchSessions();
     } catch (err) {
       console.error('Delete chat error:', err);
@@ -58,74 +52,101 @@ const ChatList = () => {
     }
   };
 
-  // Parse date - treat naive timestamps (without timezone) as UTC
   const parseDate = (dateString) => {
     if (!dateString) return null;
-    // If no timezone indicator, treat as UTC by appending Z
     const normalized = dateString.endsWith('Z') || dateString.includes('+') || dateString.includes('-', 10)
       ? dateString
       : dateString + 'Z';
     return new Date(normalized);
   };
 
-  // Format time ago
   const formatTimeAgo = (dateString) => {
     const date = parseDate(dateString);
     if (!date) return '';
     const now = new Date();
     const seconds = Math.floor((now - date) / 1000);
-
     if (seconds < 60) return 'Just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hour${Math.floor(seconds / 3600) > 1 ? 's' : ''} ago`;
-    return `${Math.floor(seconds / 86400)} day${Math.floor(seconds / 86400) > 1 ? 's' : ''} ago`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+    return `${Math.floor(seconds / 86400)}d ago`;
   };
 
-  // Fetch sessions from API
   const fetchSessions = useCallback(async () => {
     try {
       const statusParam = activeFilter === 'ALL' ? null : activeFilter;
       const result = await adminChatService.getAllSessions(statusParam);
 
       if (result.success) {
-        // Transform sessions to chat format
         const formattedChats = result.sessions.map((session, index) => ({
           id: session.sessionId || session.id || index,
           sessionId: session.sessionId || session.id,
           accountId: session.accountId,
           username: session.userName || session.accountId || session.userId || 'Unknown User',
           subject: session.subject || 'General Inquiry',
+          // Last message content is the primary preview
           message: session.lastMessage || session.subject || 'New chat session',
+          // Sort key — prefer lastMessageAt so active chats bubble to top
+          lastActivity: session.lastMessageAt || session.updatedAt || session.createdAt,
           time: formatTimeAgo(session.lastMessageAt || session.updatedAt || session.createdAt),
           unread: session.unreadCount || 0,
           status: session.status || 'WAITING',
-          createdAt: session.createdAt
+          createdAt: session.createdAt,
         }));
 
-        // Sort by most recent first
-        formattedChats.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        // Sort: unread WAITING first, then by most recent activity
+        formattedChats.sort((a, b) => {
+          // Unread WAITING sessions always float to top
+          const aUrgent = a.unread > 0 && a.status === 'WAITING' ? 1 : 0;
+          const bUrgent = b.unread > 0 && b.status === 'WAITING' ? 1 : 0;
+          if (bUrgent !== aUrgent) return bUrgent - aUrgent;
+          // Then any unread
+          const aUnread = a.unread > 0 ? 1 : 0;
+          const bUnread = b.unread > 0 ? 1 : 0;
+          if (bUnread !== aUnread) return bUnread - aUnread;
+          // Then by most recent activity
+          return new Date(b.lastActivity) - new Date(a.lastActivity);
+        });
+
+        // Detect newly-unread sessions since last poll and mark them for flash
+        setFlashIds((prev) => {
+          const next = { ...prev };
+          const now = Date.now();
+          formattedChats.forEach((c) => {
+            const prevUnread = prevUnreadRef.current[c.sessionId] ?? 0;
+            if (c.unread > prevUnread) {
+              next[c.sessionId] = now;
+            }
+            // Remove flash after 4 seconds
+            if (next[c.sessionId] && now - next[c.sessionId] > 4000) {
+              delete next[c.sessionId];
+            }
+          });
+          return next;
+        });
+
+        // Update the prev-unread snapshot
+        prevUnreadRef.current = Object.fromEntries(
+          formattedChats.map((c) => [c.sessionId, c.unread])
+        );
 
         setChats(formattedChats);
         setDataSource(result.source || '');
         setError(result.error || null);
 
-        // Fire-and-forget: fetch the customer record for any accountId we
-        // haven't already cached. This populates the name/phone shown on
-        // each row without blocking the list render.
         setAccountsByid((prev) => {
           const missing = formattedChats
             .map((c) => c.accountId)
-            .filter((id) => id && !(id in prev))
-          const unique = Array.from(new Set(missing))
+            .filter((id) => id && !(id in prev));
+          const unique = Array.from(new Set(missing));
           unique.forEach((id) => {
             accountService.getAccount(id).then((res) => {
               if (res.success) {
-                setAccountsByid((cur) => ({ ...cur, [id]: res.account }))
+                setAccountsByid((cur) => ({ ...cur, [id]: res.account }));
               }
-            }).catch(() => {})
-          })
-          return prev
-        })
+            }).catch(() => {});
+          });
+          return prev;
+        });
       } else {
         setError(result.error || 'Failed to fetch sessions');
       }
@@ -137,303 +158,355 @@ const ChatList = () => {
     }
   }, [activeFilter]);
 
-  // Initial fetch and polling setup
   useEffect(() => {
     setLoading(true);
     fetchSessions();
-
-    // Set up polling every 5 seconds
     const pollInterval = setInterval(fetchSessions, 5000);
-
-    return () => {
-      clearInterval(pollInterval);
-    };
+    return () => clearInterval(pollInterval);
   }, [fetchSessions]);
 
-  // Play notification sound for new messages
-  useEffect(() => {
-    if (soundOn && chats.some(chat => chat.unread > 0 && chat.status === 'WAITING')) {
-      // Could add audio notification here
-    }
-  }, [chats, soundOn]);
-
-  // Handle chat click
   const handleChatClick = (chat) => {
     navigate(`/chat/${chat.sessionId}`);
   };
 
-  // Get status badge color
   const getStatusColor = (status) => {
     switch (status) {
-      case 'WAITING':
-        return '#f59e0b';
-      case 'ACTIVE':
-        return '#22c55e';
-      case 'CLOSED':
-        return '#6b7280';
-      default:
-        return '#6b7280';
+      case 'WAITING': return '#f59e0b';
+      case 'ACTIVE':  return '#22c55e';
+      case 'CLOSED':  return '#6b7280';
+      default:        return '#6b7280';
     }
   };
 
-  // Get counts for each status
-  const getCounts = (status) => {
-    if (activeFilter !== 'ALL') {
-      return chats.length;
-    }
-    return chats.filter(c => c.status === status).length;
+  const getLeftBorder = (chat) => {
+    if (chat.unread > 0) return '4px solid #3b82f6';
+    if (chat.status === 'WAITING') return '4px solid #f59e0b';
+    if (chat.status === 'ACTIVE')  return '4px solid #22c55e';
+    return '4px solid transparent';
   };
 
-  // Filter chats based on active filter
   const filteredChats = activeFilter === 'ALL'
     ? chats
     : chats.filter(c => c.status === activeFilter);
 
+  const totalUnread = chats.reduce((s, c) => s + (c.unread || 0), 0);
+  const waitingCount = chats.filter(c => c.status === 'WAITING').length;
+
   return (
     <div className="chat-list-page">
-      {/* Chat Filters */}
-      <div className="chat-filters">
-        {filters.map((filter) => (
-          <button
-            key={filter}
-            className={`chat-filter-link ${activeFilter === filter ? 'active' : ''}`}
-            onClick={() => setActiveFilter(filter)}
-          >
-            {filter}
-            {filter !== 'ALL' && (
-              <span style={{ marginLeft: '6px', opacity: 0.7 }}>
-                ({getCounts(filter)})
-              </span>
-            )}
-          </button>
-        ))}
-        <span className="sound-toggle" style={{ display: 'flex', gap: '10px' }}>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes chatFlash {
+          0%, 100% { background: transparent; }
+          25%  { background: rgba(59,130,246,0.12); }
+          50%  { background: rgba(59,130,246,0.20); }
+          75%  { background: rgba(59,130,246,0.12); }
+        }
+        @keyframes unreadPulse {
+          0%, 100% { transform: scale(1); }
+          50%       { transform: scale(1.18); }
+        }
+        .spin { animation: spin 1s linear infinite; }
+        .chat-row-flash { animation: chatFlash 0.9s ease-in-out 2; }
+        .unread-badge { animation: unreadPulse 1.4s ease-in-out infinite; }
+      `}</style>
+
+      {/* Header summary bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '16px',
+        padding: '10px 20px',
+        background: '#fff',
+        borderBottom: '1px solid #e5e7eb',
+        flexWrap: 'wrap',
+      }}>
+        <div style={{ fontWeight: 700, fontSize: '16px', color: '#111827', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <FiMessageSquare size={18} />
+          Live Chats
+          {totalUnread > 0 && (
+            <span className="unread-badge" style={{
+              background: '#dc2626', color: '#fff',
+              borderRadius: '999px', padding: '2px 10px',
+              fontSize: '12px', fontWeight: 700,
+            }}>
+              {totalUnread} new
+            </span>
+          )}
+          {waitingCount > 0 && (
+            <span style={{
+              background: '#fef3c7', color: '#92400e',
+              border: '1px solid #fde68a',
+              borderRadius: '999px', padding: '2px 10px',
+              fontSize: '12px', fontWeight: 600,
+            }}>
+              {waitingCount} waiting
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
           <button
             className="btn btn-sm btn-secondary"
             onClick={fetchSessions}
             disabled={loading}
             title="Refresh"
           >
-            <FiRefreshCw className={loading ? 'spin' : ''} />
+            <FiRefreshCw size={14} className={loading ? 'spin' : ''} />
           </button>
           <button
             className={`btn btn-sm ${soundOn ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setSoundOn(!soundOn)}
           >
-            {soundOn ? <FiVolume2 /> : <FiVolumeX />}
-            <span style={{ marginLeft: '6px' }}>{soundOn ? 'Sound On' : 'Sound Off'}</span>
+            {soundOn ? <FiVolume2 size={14} /> : <FiVolumeX size={14} />}
+            <span style={{ marginLeft: '6px' }}>{soundOn ? 'Sound On' : 'Muted'}</span>
           </button>
-        </span>
+        </div>
       </div>
 
-      {/* Error Banner */}
+      {/* Filter tabs */}
+      <div className="chat-filters" style={{ borderBottom: '1px solid #e5e7eb' }}>
+        {filters.map((filter) => {
+          const count = filter === 'ALL'
+            ? chats.length
+            : chats.filter(c => c.status === filter).length;
+          const hasUnread = filter === 'WAITING'
+            ? chats.some(c => c.status === 'WAITING' && c.unread > 0)
+            : false;
+          return (
+            <button
+              key={filter}
+              className={`chat-filter-link ${activeFilter === filter ? 'active' : ''}`}
+              onClick={() => setActiveFilter(filter)}
+              style={{ position: 'relative' }}
+            >
+              {filter}
+              {count > 0 && (
+                <span style={{
+                  marginLeft: '6px',
+                  background: activeFilter === filter ? 'rgba(255,255,255,0.3)' : '#e5e7eb',
+                  color: activeFilter === filter ? '#fff' : '#374151',
+                  borderRadius: '999px',
+                  padding: '1px 7px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}>
+                  {count}
+                </span>
+              )}
+              {hasUnread && (
+                <span style={{
+                  position: 'absolute', top: '6px', right: '2px',
+                  width: '7px', height: '7px',
+                  background: '#dc2626', borderRadius: '50%',
+                  animation: 'unreadPulse 1.4s ease-in-out infinite',
+                }} />
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Error banner */}
       {error && (
         <div style={{
-          background: '#fef2f2',
-          border: '1px solid #fecaca',
-          color: '#dc2626',
-          padding: '10px 15px',
-          margin: '0 0 15px 0',
-          borderRadius: '8px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
+          background: '#fef2f2', border: '1px solid #fecaca',
+          color: '#dc2626', padding: '10px 15px', margin: '10px 15px',
+          borderRadius: '8px', display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
         }}>
           <span>{error}</span>
-          <button
-            onClick={fetchSessions}
-            style={{
-              background: '#dc2626',
-              color: '#fff',
-              border: 'none',
-              padding: '5px 10px',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }}
-          >
+          <button onClick={fetchSessions} style={{
+            background: '#dc2626', color: '#fff', border: 'none',
+            padding: '5px 10px', borderRadius: '4px', cursor: 'pointer',
+          }}>
             Retry
           </button>
         </div>
       )}
 
-      {/* Data source indicator */}
       {dataSource && dataSource !== 'api' && chats.length > 0 && (
         <div style={{
-          padding: '8px 15px',
-          background: '#fef3c7',
-          color: '#92400e',
-          fontSize: '12px',
-          marginBottom: '10px',
-          borderRadius: '6px'
+          padding: '8px 15px', background: '#fef3c7',
+          color: '#92400e', fontSize: '12px',
+          margin: '0 15px 10px', borderRadius: '6px',
         }}>
-          Showing cached data. Live server data may differ.
+          Showing cached data — live server may differ.
         </div>
       )}
 
-      {/* Chat List */}
+      {/* Chat rows */}
       <div className="content-inner">
         {loading && chats.length === 0 ? (
           <div className="empty-state">
-            <div className="loading-spinner" style={{
-              width: '40px',
-              height: '40px',
-              border: '3px solid #e5e7eb',
-              borderTop: '3px solid #3b82f6',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto 15px'
+            <div style={{
+              width: '40px', height: '40px',
+              border: '3px solid #e5e7eb', borderTop: '3px solid #3b82f6',
+              borderRadius: '50%', animation: 'spin 1s linear infinite',
+              margin: '0 auto 15px',
             }} />
-            <p className="empty-state-text">Loading chats...</p>
+            <p className="empty-state-text">Loading chats…</p>
           </div>
         ) : filteredChats.length > 0 ? (
-          <div className="card">
-            {filteredChats.map((chat) => (
-              <div
-                key={chat.id}
-                className="chat-item"
-                onClick={() => handleChatClick(chat)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '15px 20px',
-                  borderBottom: '1px solid #e5e7eb',
-                  cursor: 'pointer',
-                  transition: 'background 0.2s',
-                  background: chat.status === 'WAITING' ? 'rgba(245, 158, 11, 0.05)' : 'transparent'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
-                onMouseLeave={(e) => e.currentTarget.style.background = chat.status === 'WAITING' ? 'rgba(245, 158, 11, 0.05)' : 'transparent'}
-              >
+          <div className="card" style={{ overflow: 'hidden' }}>
+            {filteredChats.map((chat) => {
+              const isFlashing = !!flashIds[chat.sessionId];
+              const hasUnread = chat.unread > 0;
+              const acct = chat.accountId ? accountsByid[chat.accountId] : null;
+              const fullName = acct ? `${acct.firstName || ''} ${acct.lastName || ''}`.trim() : '';
+              const displayName = fullName || chat.username;
+
+              return (
                 <div
+                  key={chat.id}
+                  className={isFlashing ? 'chat-row-flash' : ''}
+                  onClick={() => handleChatClick(chat)}
                   style={{
-                    width: '45px',
-                    height: '45px',
-                    borderRadius: '50%',
-                    background: chat.status === 'WAITING' ? '#fef3c7' : '#e5e7eb',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: '15px',
-                    flexShrink: 0
+                    padding: '14px 18px',
+                    borderBottom: '1px solid #f3f4f6',
+                    borderLeft: getLeftBorder(chat),
+                    cursor: 'pointer',
+                    transition: 'background 0.15s',
+                    background: hasUnread
+                      ? 'rgba(59,130,246,0.04)'
+                      : chat.status === 'WAITING'
+                        ? 'rgba(245,158,11,0.04)'
+                        : '#fff',
                   }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = hasUnread
+                    ? 'rgba(59,130,246,0.04)'
+                    : chat.status === 'WAITING'
+                      ? 'rgba(245,158,11,0.04)'
+                      : '#fff'
+                  }
                 >
-                  <FiUser size={20} color={chat.status === 'WAITING' ? '#f59e0b' : '#6b7280'} />
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
-                    {(() => {
-                      const acct = chat.accountId ? accountsByid[chat.accountId] : null
-                      const fullName = acct ? `${acct.firstName || ''} ${acct.lastName || ''}`.trim() : ''
-                      return (
-                        <>
-                          <strong style={{ marginRight: '6px' }}>
-                            {fullName || chat.username}
-                          </strong>
-                          {chat.accountId && (
-                            <button
-                              type="button"
-                              onClick={(e) => openUserDetails(e, chat)}
-                              title="View account details"
-                              style={{
-                                marginRight: '8px',
-                                padding: '2px 8px',
-                                fontSize: '11px',
-                                background: '#eef2ff',
-                                color: '#4338ca',
-                                border: '1px solid #c7d2fe',
-                                borderRadius: '999px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '4px',
-                                lineHeight: 1.2,
-                              }}
-                            >
-                              <FiInfo size={11} />
-                              Details
-                            </button>
-                          )}
-                        </>
-                      )
-                    })()}
-                    <span
-                      className="badge"
-                      style={{
-                        fontSize: '10px',
-                        backgroundColor: getStatusColor(chat.status),
-                        color: '#fff',
-                        padding: '2px 8px',
-                        borderRadius: '10px'
-                      }}
-                    >
-                      {chat.status}
-                    </span>
-                  </div>
-                  {chat.accountId && accountsByid[chat.accountId]?.phoneNumber && (
-                    <p style={{ margin: '0 0 2px 0', color: '#6b7280', fontSize: '12px' }}>
-                      📱 {accountsByid[chat.accountId].phoneNumber}
-                    </p>
-                  )}
-                  <p style={{
-                    margin: 0,
-                    color: '#374151',
-                    fontSize: '13px',
-                    fontWeight: chat.unread > 0 ? '500' : 'normal'
+                  {/* Avatar */}
+                  <div style={{
+                    width: '42px', height: '42px', borderRadius: '50%',
+                    background: hasUnread ? '#dbeafe' : chat.status === 'WAITING' ? '#fef3c7' : '#f3f4f6',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginRight: '14px', flexShrink: 0, fontWeight: 700, fontSize: '16px',
+                    color: hasUnread ? '#2563eb' : chat.status === 'WAITING' ? '#d97706' : '#6b7280',
+                    position: 'relative',
                   }}>
-                    {chat.subject}
-                  </p>
-                  <p style={{
-                    margin: '2px 0 0 0',
-                    color: '#6b7280',
-                    fontSize: '12px',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}>
-                    {chat.message}
-                  </p>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: '15px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
-                  <div className="text-muted" style={{ fontSize: '12px' }}>
-                    <FiClock size={12} style={{ marginRight: '4px' }} />
-                    {chat.time}
-                  </div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    {chat.unread > 0 && (
-                      <span
-                        style={{
-                          background: '#dc2626',
-                          color: '#fff',
-                          borderRadius: '10px',
-                          padding: '2px 8px',
-                          fontSize: '11px',
-                          fontWeight: '600'
-                        }}
-                      >
-                        {chat.unread}
-                      </span>
+                    {displayName.charAt(0).toUpperCase() || <FiUser size={18} />}
+                    {/* Online dot for ACTIVE sessions */}
+                    {chat.status === 'ACTIVE' && (
+                      <span style={{
+                        position: 'absolute', bottom: 1, right: 1,
+                        width: '10px', height: '10px', background: '#22c55e',
+                        borderRadius: '50%', border: '2px solid #fff',
+                      }} />
                     )}
-                    <button
-                      onClick={(e) => handleDeleteChat(e, chat)}
-                      title="Delete chat"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '4px',
-                        borderRadius: '4px',
-                        color: '#9ca3af',
-                        transition: 'all 0.15s'
-                      }}
-                      onMouseEnter={(e) => { e.target.style.color = '#dc2626'; e.target.style.background = '#fee2e2'; }}
-                      onMouseLeave={(e) => { e.target.style.color = '#9ca3af'; e.target.style.background = 'transparent'; }}
-                    >
-                      <FiTrash2 size={14} />
-                    </button>
+                  </div>
+
+                  {/* Main content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Row 1: name + status badge */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '3px' }}>
+                      <span style={{
+                        fontWeight: hasUnread ? 700 : 600,
+                        fontSize: '14px',
+                        color: hasUnread ? '#111827' : '#374151',
+                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                        maxWidth: '160px',
+                      }}>
+                        {displayName}
+                      </span>
+                      <span style={{
+                        fontSize: '10px', fontWeight: 600,
+                        backgroundColor: getStatusColor(chat.status),
+                        color: '#fff', padding: '2px 7px', borderRadius: '999px',
+                        flexShrink: 0,
+                      }}>
+                        {chat.status}
+                      </span>
+                      {chat.accountId && (
+                        <button
+                          type="button"
+                          onClick={(e) => openUserDetails(e, chat)}
+                          title="View account details"
+                          style={{
+                            padding: '2px 7px', fontSize: '10px',
+                            background: '#eef2ff', color: '#4338ca',
+                            border: '1px solid #c7d2fe', borderRadius: '999px',
+                            cursor: 'pointer', display: 'inline-flex',
+                            alignItems: 'center', gap: '3px', flexShrink: 0,
+                          }}
+                        >
+                          <FiInfo size={10} /> Details
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Row 2: last message preview (primary info) */}
+                    <p style={{
+                      margin: 0,
+                      color: hasUnread ? '#1e40af' : '#6b7280',
+                      fontSize: '13px',
+                      fontWeight: hasUnread ? 600 : 400,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    }}>
+                      {chat.message}
+                    </p>
+
+                    {/* Row 3: phone (if available) */}
+                    {acct?.phoneNumber && (
+                      <p style={{ margin: '2px 0 0', color: '#9ca3af', fontSize: '11px' }}>
+                        📱 {acct.phoneNumber}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Right column: time + unread badge + delete */}
+                  <div style={{
+                    flexShrink: 0, marginLeft: '12px',
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'flex-end', gap: '6px',
+                  }}>
+                    <span style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                      <FiClock size={11} style={{ marginRight: '3px', verticalAlign: 'middle' }} />
+                      {chat.time}
+                    </span>
+
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      {hasUnread && (
+                        <span
+                          className="unread-badge"
+                          style={{
+                            background: '#dc2626', color: '#fff',
+                            borderRadius: '999px', minWidth: '22px', height: '22px',
+                            padding: '0 7px', fontSize: '12px', fontWeight: 700,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}
+                        >
+                          {chat.unread}
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => handleDeleteChat(e, chat)}
+                        title="Delete chat"
+                        style={{
+                          background: 'transparent', border: 'none',
+                          cursor: 'pointer', padding: '4px', borderRadius: '4px',
+                          color: '#d1d5db', transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; e.currentTarget.style.background = '#fee2e2'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = '#d1d5db'; e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <FiTrash2 size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="empty-state">
@@ -454,21 +527,6 @@ const ChatList = () => {
         )}
       </div>
 
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-        .chat-item:hover {
-          background: #f9fafb !important;
-        }
-      `}</style>
-
-      {/* Account-details modal — same component the Users page uses, opened
-          from the Details chip on each chat row. */}
       {selectedUser && (
         <UserDetailsModal
           user={selectedUser}
