@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../context/TranslationContext';
 import { keycloakService } from '../services/keycloakService';
+import { adminChatService } from './services/adminChatService';
 import {
   FiMessageSquare,
   FiRepeat,
@@ -50,9 +51,39 @@ const TIMEZONES = [
 
 const DEFAULT_TZ = 'Australia/Melbourne';
 
+// ─── Global chat alert helpers ────────────────────────────────────────────────
+// Shared AudioContext — created/resumed on first user gesture so Chrome allows it.
+let _audioCtx = null;
+const getAudioCtx = () => {
+  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+};
+const globalBeep = () => {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+  } catch {}
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AdminLayout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
+  const prevUnreadRef = useRef({});
+  // Read soundOn from localStorage so it stays in sync with ChatList's toggle
+  const getSoundOn = () => {
+    try { return localStorage.getItem('admin_chat_sound') !== 'false'; } catch { return true; }
+  };
   const [timezone, setTimezone] = useState(() => {
     try {
       return localStorage.getItem('admin_tz') || DEFAULT_TZ;
@@ -77,6 +108,53 @@ const AdminLayout = () => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // ── Global chat notification polling ──────────────────────────────────────
+  // Runs on every page so staff get alerts regardless of which screen they're on.
+  const pollChat = useCallback(async () => {
+    try {
+      const result = await adminChatService.getAllSessions(null);
+      if (!result.success) return;
+
+      const sessions = result.sessions || [];
+      const totalUnread = sessions.reduce((s, c) => s + (Number(c.unreadCount) || 0), 0);
+      setChatUnread(totalUnread);
+
+      // Detect newly-unread sessions synchronously before updating the ref
+      const newlyUnread = sessions.filter((s) => {
+        const prev = prevUnreadRef.current[s.sessionId] ?? 0;
+        return (Number(s.unreadCount) || 0) > prev && s.sessionId in prevUnreadRef.current;
+      });
+
+      // Snapshot for next poll
+      prevUnreadRef.current = Object.fromEntries(
+        sessions.map((s) => [s.sessionId, Number(s.unreadCount) || 0])
+      );
+
+      if (newlyUnread.length === 0) return;
+
+      // Sound alert
+      if (getSoundOn()) globalBeep();
+
+      // Browser notification
+      if ('Notification' in window && Notification.permission === 'granted') {
+        newlyUnread.forEach((s) => {
+          new Notification('New message — Team33 Support', {
+            body: `${s.userName || s.accountId || 'Player'}: ${s.lastMessage || 'New message'}`,
+            icon: '/favicon.ico',
+            tag: s.sessionId,
+          });
+        });
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    pollChat();
+    const id = setInterval(pollChat, 5000);
+    return () => clearInterval(id);
+  }, [pollChat]);
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Lock body scroll when sidebar is open (mobile)
   useEffect(() => {
@@ -184,6 +262,12 @@ const AdminLayout = () => {
 
   return (
     <div className="admin-layout">
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.2); }
+        }
+      `}</style>
       {/* Top Time Bar */}
       <div className="time-bar">
         <div className="time-bar-left">
@@ -209,8 +293,27 @@ const AdminLayout = () => {
       {/* Top Header with Icons */}
       <header className="top-header">
         <div className="header-icons">
-          <NavLink to="/chatlist" className={({ isActive }) => `header-icon-btn ${isActive ? 'active' : ''}`} title={t('chatList')}>
+          <NavLink
+            to="/chatlist"
+            className={({ isActive }) => `header-icon-btn ${isActive ? 'active' : ''}`}
+            title={t('chatList')}
+            onClick={() => { try { getAudioCtx(); } catch {} }}
+            style={{ position: 'relative' }}
+          >
             <FiMessageSquare size={28} />
+            {chatUnread > 0 && (
+              <span style={{
+                position: 'absolute', top: '2px', right: '2px',
+                background: '#dc2626', color: '#fff',
+                borderRadius: '999px', minWidth: '18px', height: '18px',
+                fontSize: '10px', fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '0 4px', lineHeight: 1,
+                animation: 'pulse 1.4s ease-in-out infinite',
+              }}>
+                {chatUnread > 99 ? '99+' : chatUnread}
+              </span>
+            )}
           </NavLink>
           <NavLink to="/transactions" className={({ isActive }) => `header-icon-btn ${isActive ? 'active' : ''}`} title={t('transactions')}>
             <FiRepeat size={28} />

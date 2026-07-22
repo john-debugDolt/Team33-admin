@@ -41,7 +41,9 @@ const playBeep = () => {
 
 const ChatList = () => {
   const navigate = useNavigate();
-  const [soundOn, setSoundOn] = useState(true);
+  const [soundOn, setSoundOn] = useState(() => {
+    try { return localStorage.getItem('admin_chat_sound') !== 'false'; } catch { return true; }
+  });
   const [notifPermission, setNotifPermission] = useState(
     'Notification' in window ? Notification.permission : 'unsupported'
   );
@@ -354,7 +356,7 @@ const ChatList = () => {
             onClick={() => {
               const next = !soundOn;
               setSoundOn(next);
-              // Warm up AudioContext on this click gesture
+              try { localStorage.setItem('admin_chat_sound', next ? 'true' : 'false'); } catch {}
               if (next) { try { getAudioCtx(); playBeep(); } catch {} }
             }}
             title={soundOn ? 'Mute sound alerts' : 'Enable sound alerts'}
