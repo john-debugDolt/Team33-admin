@@ -4,40 +4,8 @@ import { FiMessageSquare, FiVolume2, FiVolumeX, FiBell, FiBellOff, FiUser, FiClo
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
 import { accountService } from '../../services/accountService';
+import { soundService } from '../services/soundService';
 import UserDetailsModal from '../components/UserDetailsModal';
-
-// Shared AudioContext — created once on first user gesture, reused thereafter.
-// A fresh context per beep was failing silently because browsers require the
-// context to be resumed after a user interaction.
-let sharedAudioCtx = null;
-const getAudioCtx = () => {
-  if (!sharedAudioCtx) {
-    sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  }
-  if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume();
-  }
-  return sharedAudioCtx;
-};
-
-const playBeep = () => {
-  try {
-    const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.4);
-  } catch (e) {
-    console.warn('[ChatList] beep failed:', e);
-  }
-};
 
 const ChatList = () => {
   const navigate = useNavigate();
@@ -56,24 +24,18 @@ const ChatList = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [flashIds, setFlashIds] = useState({});
   const prevUnreadRef = useRef({});
-  const soundOnRef = useRef(soundOn);
-  useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
 
-  // Enable notifications button handler — must be called from a click (user gesture)
-  // so Chrome actually shows the permission prompt and AudioContext is allowed.
   const handleEnableNotifications = async () => {
-    // Warm up AudioContext on this gesture so future beeps aren't blocked
-    try { getAudioCtx(); } catch {}
+    soundService.unlock(); // satisfy gesture requirement for audio
     if ('Notification' in window) {
       const result = await Notification.requestPermission();
       setNotifPermission(result);
       if (result === 'granted') {
-        // Fire a test notification immediately so staff can confirm it works
         new Notification('Notifications enabled ✓', {
           body: 'You will be alerted when players send messages.',
           icon: '/favicon.ico',
         });
-        if (soundOnRef.current) playBeep();
+        soundService.beep();
       }
     }
   };
@@ -140,9 +102,10 @@ const ChatList = () => {
           accountId: session.accountId,
           username: session.userName || session.accountId || session.userId || 'Unknown User',
           subject: session.subject || 'General Inquiry',
-          // Try every field the backend might use for the last message preview
+          // Use any last-message field the backend provides; do NOT fall back to
+          // subject — "General Inquiry" is not a message and blocks the fetch-fallback below.
           message: session.lastMessage || session.lastMessageContent || session.preview
-                   || session.snippet || session.subject || '',
+                   || session.snippet || '',
           lastActivity: session.lastMessageAt || session.updatedAt || session.createdAt,
           time: formatTimeAgo(session.lastMessageAt || session.updatedAt || session.createdAt),
           unread: session.unreadCount || 0,
@@ -161,7 +124,11 @@ const ChatList = () => {
             needPreview.slice(0, 8).map(async (c) => {
               const r = await adminChatService.getMessages(c.sessionId);
               if (r.success && r.messages?.length > 0) {
-                const last = r.messages[r.messages.length - 1];
+                // Prefer the last USER message so the tile shows what the player wrote
+                const userMsgs = r.messages.filter((m) => m.senderType === 'USER');
+                const last = userMsgs.length > 0
+                  ? userMsgs[userMsgs.length - 1]
+                  : r.messages[r.messages.length - 1];
                 c.message = last.content || '';
               }
             })
@@ -200,7 +167,7 @@ const ChatList = () => {
 
         // Fire sound + browser notification synchronously (newlyUnread is plain array)
         if (newlyUnread.length > 0) {
-          if (soundOnRef.current) playBeep();
+          soundService.beep();
           if ('Notification' in window && Notification.permission === 'granted') {
             newlyUnread.forEach((c) => {
               new Notification('New message — Team33 Support', {
@@ -356,8 +323,8 @@ const ChatList = () => {
             onClick={() => {
               const next = !soundOn;
               setSoundOn(next);
-              try { localStorage.setItem('admin_chat_sound', next ? 'true' : 'false'); } catch {}
-              if (next) { try { getAudioCtx(); playBeep(); } catch {} }
+              soundService.setSoundOn(next);
+              if (next) { soundService.unlock(); soundService.beep(); }
             }}
             title={soundOn ? 'Mute sound alerts' : 'Enable sound alerts'}
           >

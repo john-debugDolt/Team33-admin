@@ -3,6 +3,7 @@ import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../context/TranslationContext';
 import { keycloakService } from '../services/keycloakService';
 import { adminChatService } from './services/adminChatService';
+import { soundService } from './services/soundService';
 import {
   FiMessageSquare,
   FiRepeat,
@@ -51,39 +52,12 @@ const TIMEZONES = [
 
 const DEFAULT_TZ = 'Australia/Melbourne';
 
-// ─── Global chat alert helpers ────────────────────────────────────────────────
-// Shared AudioContext — created/resumed on first user gesture so Chrome allows it.
-let _audioCtx = null;
-const getAudioCtx = () => {
-  if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (_audioCtx.state === 'suspended') _audioCtx.resume();
-  return _audioCtx;
-};
-const globalBeep = () => {
-  try {
-    const ctx = getAudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
-  } catch {}
-};
-// ─────────────────────────────────────────────────────────────────────────────
 
 const AdminLayout = () => {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chatUnread, setChatUnread] = useState(0);
   const prevUnreadRef = useRef({});
-  // Read soundOn from localStorage so it stays in sync with ChatList's toggle
-  const getSoundOn = () => {
-    try { return localStorage.getItem('admin_chat_sound') !== 'false'; } catch { return true; }
-  };
   const [timezone, setTimezone] = useState(() => {
     try {
       return localStorage.getItem('admin_tz') || DEFAULT_TZ;
@@ -134,7 +108,7 @@ const AdminLayout = () => {
       if (newlyUnread.length === 0) return;
 
       // Sound alert
-      if (getSoundOn()) globalBeep();
+      soundService.beep();
 
       // Browser notification
       if ('Notification' in window && Notification.permission === 'granted') {
@@ -297,7 +271,7 @@ const AdminLayout = () => {
             to="/chatlist"
             className={({ isActive }) => `header-icon-btn ${isActive ? 'active' : ''}`}
             title={t('chatList')}
-            onClick={() => { try { getAudioCtx(); } catch {} }}
+            onClick={() => soundService.unlock()}
             style={{ position: 'relative' }}
           >
             <FiMessageSquare size={28} />
