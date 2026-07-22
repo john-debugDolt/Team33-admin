@@ -110,9 +110,9 @@ const ChatList = () => {
           accountId: session.accountId,
           username: session.userName || session.accountId || session.userId || 'Unknown User',
           subject: session.subject || 'General Inquiry',
-          // Last message content is the primary preview
-          message: session.lastMessage || session.subject || 'New chat session',
-          // Sort key — prefer lastMessageAt so active chats bubble to top
+          // Try every field the backend might use for the last message preview
+          message: session.lastMessage || session.lastMessageContent || session.preview
+                   || session.snippet || session.subject || '',
           lastActivity: session.lastMessageAt || session.updatedAt || session.createdAt,
           time: formatTimeAgo(session.lastMessageAt || session.updatedAt || session.createdAt),
           unread: session.unreadCount || 0,
@@ -120,43 +120,55 @@ const ChatList = () => {
           createdAt: session.createdAt,
         }));
 
-        // Sort: unread WAITING first, then by most recent activity
+        // For sessions with unread messages but no preview text, fetch their
+        // last message from the API so the tile shows what the player said.
+        const needPreview = formattedChats.filter(
+          (c) => c.unread > 0 && !c.message && c.sessionId
+        );
+        if (needPreview.length > 0) {
+          // Fire fetches in parallel, cap at 8 to avoid hammering the server
+          await Promise.all(
+            needPreview.slice(0, 8).map(async (c) => {
+              const r = await adminChatService.getMessages(c.sessionId);
+              if (r.success && r.messages?.length > 0) {
+                const last = r.messages[r.messages.length - 1];
+                c.message = last.content || '';
+              }
+            })
+          );
+        }
+
+        // Sort: unread WAITING first → any unread → most recent activity
         formattedChats.sort((a, b) => {
-          // Unread WAITING sessions always float to top
           const aUrgent = a.unread > 0 && a.status === 'WAITING' ? 1 : 0;
           const bUrgent = b.unread > 0 && b.status === 'WAITING' ? 1 : 0;
           if (bUrgent !== aUrgent) return bUrgent - aUrgent;
-          // Then any unread
           const aUnread = a.unread > 0 ? 1 : 0;
           const bUnread = b.unread > 0 ? 1 : 0;
           if (bUnread !== aUnread) return bUnread - aUnread;
-          // Then by most recent activity
           return new Date(b.lastActivity) - new Date(a.lastActivity);
         });
 
-        // Detect newly-unread sessions since last poll — flash, sound, notification
-        const newlyUnread = [];
+        // Detect newly-unread sessions BEFORE calling setFlashIds so we can
+        // act on the result synchronously (state updater functions run deferred).
+        const now = Date.now();
+        const newlyUnread = formattedChats.filter((c) => {
+          const prevUnread = prevUnreadRef.current[c.sessionId] ?? 0;
+          // "in" check skips first-load so we don't blast on page open
+          return c.unread > prevUnread && c.sessionId in prevUnreadRef.current;
+        });
+
         setFlashIds((prev) => {
           const next = { ...prev };
-          const now = Date.now();
           formattedChats.forEach((c) => {
             const prevUnread = prevUnreadRef.current[c.sessionId] ?? 0;
-            if (c.unread > prevUnread) {
-              next[c.sessionId] = now;
-              // Only fire alerts if prevUnread is defined (not first load)
-              if (c.sessionId in prevUnreadRef.current) {
-                newlyUnread.push(c);
-              }
-            }
-            // Remove flash after 4 seconds
-            if (next[c.sessionId] && now - next[c.sessionId] > 4000) {
-              delete next[c.sessionId];
-            }
+            if (c.unread > prevUnread) next[c.sessionId] = now;
+            if (next[c.sessionId] && now - next[c.sessionId] > 4000) delete next[c.sessionId];
           });
           return next;
         });
 
-        // After state update, fire sound + browser notification for new messages
+        // Fire sound + browser notification synchronously (newlyUnread is plain array)
         if (newlyUnread.length > 0) {
           if (soundOnRef.current) playBeep();
           if ('Notification' in window && Notification.permission === 'granted') {
@@ -170,7 +182,7 @@ const ChatList = () => {
           }
         }
 
-        // Update the prev-unread snapshot
+        // Snapshot unread counts for next poll comparison
         prevUnreadRef.current = Object.fromEntries(
           formattedChats.map((c) => [c.sessionId, c.unread])
         );
