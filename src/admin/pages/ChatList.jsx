@@ -1,32 +1,50 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FiMessageSquare, FiVolume2, FiVolumeX, FiUser, FiClock, FiRefreshCw, FiTrash2, FiInfo } from 'react-icons/fi';
+import { FiMessageSquare, FiVolume2, FiVolumeX, FiBell, FiBellOff, FiUser, FiClock, FiRefreshCw, FiTrash2, FiInfo } from 'react-icons/fi';
 import { adminChatService } from '../services/adminChatService';
 import { chatStorageService } from '../../services/chatStorageService';
 import { accountService } from '../../services/accountService';
 import UserDetailsModal from '../components/UserDetailsModal';
 
-// Play a short notification beep using the Web Audio API — no audio file needed.
+// Shared AudioContext — created once on first user gesture, reused thereafter.
+// A fresh context per beep was failing silently because browsers require the
+// context to be resumed after a user interaction.
+let sharedAudioCtx = null;
+const getAudioCtx = () => {
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume();
+  }
+  return sharedAudioCtx;
+};
+
 const playBeep = () => {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = getAudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.type = 'sine';
     osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
     osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.35);
-  } catch { /* AudioContext blocked by browser policy — silently skip */ }
+    osc.stop(ctx.currentTime + 0.4);
+  } catch (e) {
+    console.warn('[ChatList] beep failed:', e);
+  }
 };
 
 const ChatList = () => {
   const navigate = useNavigate();
   const [soundOn, setSoundOn] = useState(true);
+  const [notifPermission, setNotifPermission] = useState(
+    'Notification' in window ? Notification.permission : 'unsupported'
+  );
   const [activeFilter, setActiveFilter] = useState('ALL');
   const [chats, setChats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,12 +52,29 @@ const ChatList = () => {
   const [dataSource, setDataSource] = useState('');
   const [accountsByid, setAccountsByid] = useState({});
   const [selectedUser, setSelectedUser] = useState(null);
-  // Track which session IDs are "newly unread" since last poll so we can
-  // flash them. Keyed by sessionId, value = timestamp of first detection.
   const [flashIds, setFlashIds] = useState({});
   const prevUnreadRef = useRef({});
   const soundOnRef = useRef(soundOn);
   useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
+
+  // Enable notifications button handler — must be called from a click (user gesture)
+  // so Chrome actually shows the permission prompt and AudioContext is allowed.
+  const handleEnableNotifications = async () => {
+    // Warm up AudioContext on this gesture so future beeps aren't blocked
+    try { getAudioCtx(); } catch {}
+    if ('Notification' in window) {
+      const result = await Notification.requestPermission();
+      setNotifPermission(result);
+      if (result === 'granted') {
+        // Fire a test notification immediately so staff can confirm it works
+        new Notification('Notifications enabled ✓', {
+          body: 'You will be alerted when players send messages.',
+          icon: '/favicon.ico',
+        });
+        if (soundOnRef.current) playBeep();
+      }
+    }
+  };
 
   const openUserDetails = (e, chat) => {
     e.stopPropagation();
@@ -54,13 +89,6 @@ const ChatList = () => {
       ...acct,
     });
   };
-
-  // Request browser notification permission once on mount
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
 
   const filters = ['ALL', 'WAITING', 'ACTIVE', 'CLOSED'];
 
@@ -312,7 +340,7 @@ const ChatList = () => {
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+        <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto', alignItems: 'center' }}>
           <button
             className="btn btn-sm btn-secondary"
             onClick={fetchSessions}
@@ -323,11 +351,52 @@ const ChatList = () => {
           </button>
           <button
             className={`btn btn-sm ${soundOn ? 'btn-primary' : 'btn-secondary'}`}
-            onClick={() => setSoundOn(!soundOn)}
+            onClick={() => {
+              const next = !soundOn;
+              setSoundOn(next);
+              // Warm up AudioContext on this click gesture
+              if (next) { try { getAudioCtx(); playBeep(); } catch {} }
+            }}
+            title={soundOn ? 'Mute sound alerts' : 'Enable sound alerts'}
           >
             {soundOn ? <FiVolume2 size={14} /> : <FiVolumeX size={14} />}
             <span style={{ marginLeft: '6px' }}>{soundOn ? 'Sound On' : 'Muted'}</span>
           </button>
+          {/* Browser notification toggle — shown differently based on permission state */}
+          {notifPermission !== 'unsupported' && (
+            notifPermission === 'granted' ? (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                fontSize: '12px', color: '#16a34a', fontWeight: 600,
+                padding: '5px 10px', background: '#dcfce7',
+                borderRadius: '6px', border: '1px solid #bbf7d0',
+              }}>
+                <FiBell size={13} /> Alerts On
+              </span>
+            ) : notifPermission === 'denied' ? (
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                fontSize: '12px', color: '#dc2626', fontWeight: 600,
+                padding: '5px 10px', background: '#fee2e2',
+                borderRadius: '6px', border: '1px solid #fecaca',
+              }} title="Notifications blocked. Click the lock icon in the address bar to allow them.">
+                <FiBellOff size={13} /> Blocked
+              </span>
+            ) : (
+              <button
+                className="btn btn-sm"
+                onClick={handleEnableNotifications}
+                style={{
+                  background: '#f59e0b', color: '#fff', border: 'none',
+                  display: 'inline-flex', alignItems: 'center', gap: '6px',
+                  fontWeight: 600,
+                }}
+                title="Click to enable browser notifications for new messages"
+              >
+                <FiBell size={14} /> Enable Alerts
+              </button>
+            )
+          )}
         </div>
       </div>
 
